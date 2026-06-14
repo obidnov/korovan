@@ -21,6 +21,7 @@ import { createCaravanFsm, CARAVAN_ROUTE, CARAVAN_INTERACT_RANGE } from './world
 import { createCartEntity, buildCartMesh } from './game/caravan/cartEntity'
 import { createEscortEntity, type EscortEntity } from './game/caravan/escortEntity'
 import { createLootHud } from './game/caravan/lootHud'
+import { createInventory, LOOT_GOLD, LOOT_WOOD, LOOT_IRON_ORE } from './game/inventory'
 
 // ---------------------------------------------------------------------------
 // Combat constants
@@ -131,6 +132,7 @@ async function main() {
   const cartEntity = createCartEntity(cartMesh, scene, world, initialCartPos)
 
   const lootHud = createLootHud()
+  const inventory = createInventory()
 
   /** Live escort array — mutated in-place (push on spawn, splice on death/respawn). */
   const escorts: EscortEntity[] = []
@@ -359,10 +361,9 @@ async function main() {
       caravanFsm.loot()
       lootHud.setPromptVisible(false)
       lootHud.flashLooted()
-      // Emit loot event for BOO-388 inventory system to hook into
-      window.dispatchEvent(new CustomEvent('caravan:looted', {
-        detail: { items: [{ id: 'gold-coins', qty: 50 }, { id: 'cloth', qty: 3 }] },
-      }))
+      inventory.add({ id: LOOT_GOLD, qty: 50 })
+      inventory.add({ id: LOOT_WOOD, qty: 5 })
+      inventory.add({ id: LOOT_IRON_ORE, qty: 2 })
     }
 
     renderer.render(scene, camera)

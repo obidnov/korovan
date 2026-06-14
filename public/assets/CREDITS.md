@@ -21,4 +21,22 @@ All assets in this directory are released under [Creative Commons Zero (CC0 1.0 
 
 ---
 
-> **Next step (P1):** Replace these placeholder meshes with production-quality CC0 models from the sources above once art direction (BOO-378) is finalised.
+## Audio
+
+Placeholder WAV files in `audio/` are silent stubs for development.
+Replace with CC0 sounds from the sources below before any public release.
+
+### Recommended Kenney packs (all CC0 / public domain)
+
+| Sound | Pack | File to use |
+|---|---|---|
+| `footsteps.wav` | [RPG Audio](https://kenney.nl/assets/rpg-audio) | footstep on grass/dirt |
+| `sword-swing.wav` | [RPG Audio](https://kenney.nl/assets/rpg-audio) | sword swing |
+| `hit.wav` | [Impact Sounds](https://kenney.nl/assets/impact-sounds) | impact / hit effect |
+| `forest-ambient.wav` | [Ambient Sounds](https://kenney.nl/assets/ambient-sounds) | forest loop |
+
+Credit line for release: "Audio assets from kenney.nl (CC0 / public domain)"
+
+---
+
+> **Next step (P1):** Replace these placeholder meshes and audio stubs with production-quality CC0 assets from the sources above once art direction (BOO-378) is finalised.

@@ -36,6 +36,7 @@
     "@dimforge/rapier3d-compat": "^0.19.3",
     "howler": "^2.2.4",
     "stats.js": "^0.17.0",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "zod": "^4.4.3"
   }
 }

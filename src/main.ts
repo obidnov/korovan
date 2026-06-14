@@ -17,7 +17,7 @@ import { SOLDIER_SPAWNS } from './game/ai/soldierSpawns'
 import { createHpComponent } from './game/combat/hp'
 import { createMeleeWeapon } from './game/combat/meleeWeapon'
 import { createDeathScreen } from './game/combat/deathScreen'
-import { swordSwing, hit } from './audio/sounds'
+import { swordSwing, hit, footsteps } from './audio/sounds'
 import { createCaravanFsm, CARAVAN_ROUTE, CARAVAN_INTERACT_RANGE } from './world/caravan'
 import { createCartEntity, buildCartMesh } from './game/caravan/cartEntity'
 import { createEscortEntity, type EscortEntity } from './game/caravan/escortEntity'
@@ -30,6 +30,7 @@ import { createPauseMenu } from './ui/pauseMenu'
 import { saveGame, loadGame } from './persistence/save'
 import { validateSaveV1, type SaveV1 } from './save/schema'
 import { startSceneAudio, type SceneAudioHandle } from './audio/sceneAudio'
+import { createFootstepsController } from './audio/footstepsController'
 
 // ---------------------------------------------------------------------------
 // One-time localStorage migration: remove legacy client-side provider keys
@@ -142,6 +143,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   const player = createPlayerController(world, scene, playerMesh)
   const thirdPersonCam = createThirdPersonCamera(camera, scene)
   const input = createInputHandler(canvas)
+  const footstepsCtl = createFootstepsController(footsteps)
 
   // -------------------------------------------------------------------------
   // Combat setup
@@ -361,6 +363,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     step()
     player.update(dt, input.state, thirdPersonCam.yaw)
     thirdPersonCam.update(dt, player.getPosition())
+    footstepsCtl.update(player.isMoving())
 
     const playerPos = player.getPosition()
 

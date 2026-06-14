@@ -22,6 +22,8 @@ export type PlayerController = {
   update(dt: number, input: InputState, cameraYaw: number): void
   /** Instantly move the physics body (and mesh) to the given world position. */
   teleport(position: { x: number; y: number; z: number }): void
+  /** True when the player is grounded and moving horizontally above the configured threshold. */
+  isMoving(): boolean
   dispose(): void
 }
 
@@ -54,6 +56,7 @@ export function createPlayerController(
   let jumpCooldownRemaining = 0
   let coyoteRemaining = 0
   let wasOnGround = false
+  let moving = false
 
   const pos = new THREE.Vector3(0, 2, 0)
 
@@ -126,6 +129,11 @@ export function createPlayerController(
       mesh.rotation.y = angle
     }
 
+    // horizontal speed from actual computed movement — used by footsteps audio gating
+    const horizontalSpeed =
+      dt > 0 ? Math.hypot(computed.x, computed.z) / dt : 0
+    moving = onGround && horizontalSpeed > cfg.movingSpeedThreshold
+
     wasOnGround = onGround
   }
 
@@ -138,6 +146,10 @@ export function createPlayerController(
     verticalVelocity = 0
   }
 
+  function isMoving(): boolean {
+    return moving
+  }
+
   function dispose(): void {
     scene.remove(mesh)
     world.removeCharacterController(controller)
@@ -145,7 +157,7 @@ export function createPlayerController(
     world.removeRigidBody(body)
   }
 
-  return { mesh, getPosition, update, teleport, dispose }
+  return { mesh, getPosition, update, teleport, isMoving, dispose }
 }
 
 /** Build a placeholder capsule mesh for when the GLB is not yet loaded. */

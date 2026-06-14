@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Footsteps sound looped on player movement: starts when horizontal ground speed exceeds `movingSpeedThreshold` (0.5 m/s) and stops when player halts or leaves the ground (`src/audio/footstepsController.ts`, BOO-414)
+- `PlayerController.isMoving()` exposes grounded + above-threshold horizontal speed for audio gating
+- 7 unit tests for footsteps edge-triggered start/stop logic
+
 ## [0.2.0] - 2026-06-14
 
 ### Added

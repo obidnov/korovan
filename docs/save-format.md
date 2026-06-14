@@ -32,25 +32,28 @@ The `version` field is a **literal integer** used by the migration layer to sele
 ## Versioning contract
 
 1. **Never mutate a released schema.** Adding a field to SaveV1 that was never there is a breaking change — cut SaveV2 instead.
-2. **All new shapes ship with a `migrate` case.** The `migrate(prev: AnyVersion): SaveV1` function in `src/save/schema.ts` is the single upgrade entry point. Each new version adds a case:
+2. **Migration is always forward** — old on-disk data is upgraded to `SaveCurrent` (the latest type). `SaveCurrent` is a re-aliased type that always points to the newest version. Each new version adds an upgrade case to `migrate`:
    ```ts
-   // SaveV2 example:
-   if (prev.version === 2) return upgradeV2toV1(prev);
+   // When SaveV2 ships — upgrade v1 → v2:
+   if (prev.version === 1) return { ...prev, version: 2, player: { ...prev.player, region: 'default' } };
    ```
-3. **Loader always migrates before use.** The persistence layer (future issue) calls `migrate(raw)` after `validateSaveV1` fails, then re-validates the result.
+3. **Loader always migrates before use.** The persistence layer (future issue) calls `migrate(raw)` on the raw parsed JSON, then validates the result as `SaveCurrent`.
 
-## Migration example (future SaveV2 → SaveV1)
+## Migration example (SaveV1 → future SaveV2)
 
 ```ts
-// In src/save/schema.ts when SaveV2 ships:
+// In src/save/schema.ts when SaveV2 ships (e.g. adds player.region):
+export type SaveV2 = { version: 2; player: { region: string } & Omit<SaveV1['player'], never>; /* ... */ };
 export type AnyVersion = SaveV1 | SaveV2;
+export type SaveCurrent = SaveV2; // bump the alias
 
-export function migrate(prev: AnyVersion): SaveV1 {
-  if (prev.version === 1) return prev;
-  if (prev.version === 2) {
+export function migrate(prev: AnyVersion): SaveCurrent {
+  if (prev.version === 2) return prev;           // already current
+  if (prev.version === 1) {
     return {
-      version: 1,
-      // ... map SaveV2 fields to SaveV1 shape
+      ...prev,
+      version: 2,
+      player: { ...prev.player, region: 'default' }, // fill added field with default
     };
   }
   const _: never = prev; // exhaustiveness guard

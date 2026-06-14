@@ -46,7 +46,10 @@ export function validateSaveV1(raw: unknown): SaveV1 {
 // Union of all versioned save types; extend here when SaveV2 ships
 export type AnyVersion = SaveV1;
 
-// Identity for v1 — add v2 → v1 conversion here when SaveV2 is defined
-export function migrate(prev: AnyVersion): SaveV1 {
+// SaveCurrent always points to the latest version — re-alias when SaveVN ships
+export type SaveCurrent = SaveV1;
+
+// Identity for v1 — add v1 → v2 upgrade case here when SaveV2 is defined
+export function migrate(prev: AnyVersion): SaveCurrent {
   return prev;
 }

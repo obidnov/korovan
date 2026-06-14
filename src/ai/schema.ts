@@ -1,7 +1,49 @@
+import { z } from 'zod'
 import type { CommandEnvelope, FactionCommand, LLMResponse, Zone } from './types'
 import { LLMError } from './types'
 
+// Zod schemas — used by deepseek.ts (BOO-394) for safe-parse validation
+export const ToolCallSchema = z.object({
+  id: z.string(),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.string(),
+    arguments: z.string(),
+  }),
+})
+
+export const LLMResponseSchema = z.object({
+  content: z.string().nullable(),
+  tool_calls: z.array(ToolCallSchema).optional(),
+})
+
+const ZoneSchema = z.enum(['elf-forest', 'palace', 'neutral', 'villain-fort'])
+
+export const FactionCommandSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('patrol'),
+    targetZone: ZoneSchema,
+    units: z.array(z.string()),
+  }),
+  z.object({
+    type: z.literal('raid'),
+    targetZone: ZoneSchema,
+    units: z.array(z.string()),
+  }),
+  z.object({
+    type: z.literal('noop'),
+    reason: z.string(),
+  }),
+])
+
+export const CommandEnvelopeSchema = z.object({
+  issuedAtTickMs: z.number(),
+  commands: z.array(FactionCommandSchema),
+})
+
 // JSON schema for CommandEnvelope — embedded in tool parameters and opts.schema fallback
+// Used by agentRouter.ts (BOO-390). Includes explicit type:'string' on const fields for
+// stricter LLM tool-call validation.
 export const COMMAND_ENVELOPE_JSON_SCHEMA: Record<string, unknown> = {
   type: 'object',
   required: ['issuedAtTickMs', 'commands'],
@@ -49,6 +91,7 @@ export const COMMAND_ENVELOPE_JSON_SCHEMA: Record<string, unknown> = {
   },
 }
 
+// Manual parsers — used by agentRouter.ts (BOO-390)
 const VALID_ZONES = new Set<Zone>(['elf-forest', 'palace', 'neutral', 'villain-fort'])
 
 function parseCommand(value: unknown, index: number): FactionCommand {
@@ -109,3 +152,6 @@ export function parseLLMResponse(value: unknown): LLMResponse {
     tool_calls: obj['tool_calls'] as LLMResponse['tool_calls'],
   }
 }
+
+// Alias for feature-branch consumers that use camelCase naming (deepseek.test.ts via BOO-394)
+export const CommandEnvelopeJsonSchema = COMMAND_ENVELOPE_JSON_SCHEMA

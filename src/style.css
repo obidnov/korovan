@@ -19,3 +19,17 @@ body {
   width: 100%;
   height: 100%;
 }
+
+#pointer-hint {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: #ccc;
+  font: 0.85rem/1.4 sans-serif;
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  pointer-events: none;
+  user-select: none;
+}

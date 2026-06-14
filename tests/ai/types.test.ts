@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   type LLMProvider,
   type Message,
@@ -11,6 +11,7 @@ import {
   LLMError,
   redactProviderSettings,
 } from '../../src/ai/types';
+import { safeLogLLMError } from '../../src/ai/log';
 
 // ---------------------------------------------------------------------------
 // Fake provider implementation used across all tests
@@ -171,5 +172,75 @@ describe('redactProviderSettings', () => {
   it('does not mutate the original settings', () => {
     redactProviderSettings(settings);
     expect(settings.apiKey).toBe('sk-secret-key-never-log-this');
+  });
+
+  it('RedactedProviderSettings — apiKey literal is "***" at runtime (O1)', () => {
+    const redacted = redactProviderSettings(settings);
+    // The branded type ensures apiKey is always '***' — verify at runtime too
+    expect(redacted.apiKey satisfies '***').toBe('***');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LLMError secret scrubbing (O2 — BOO-408)
+// ---------------------------------------------------------------------------
+
+describe('LLMError — secret scrubbing', () => {
+  it('strips Bearer token from message', () => {
+    const err = new LLMError('auth', 'status=401 headers=Authorization: Bearer sk-my-secret-key');
+    expect(err.message).not.toContain('sk-my-secret-key');
+    expect(err.message).toContain('<redacted>');
+  });
+
+  it('strips sk- style API key from message', () => {
+    const err = new LLMError('auth', 'sk-abcdefghijklmnopqrst leaked in response');
+    expect(err.message).not.toContain('sk-abcdefghijklmnopqrst');
+    expect(err.message).toContain('<redacted>');
+  });
+
+  it('strips x-api-key header from message', () => {
+    const err = new LLMError('network', 'request failed x-api-key: mySecretToken123');
+    expect(err.message).not.toContain('mySecretToken123');
+    expect(err.message).toContain('<redacted>');
+  });
+
+  it('passes through messages with no secret patterns unchanged', () => {
+    const err = new LLMError('timeout', 'request timed out after 15000ms');
+    expect(err.message).toBe('request timed out after 15000ms');
+  });
+
+  it('preserves code and retryAfterMs independently of scrubbing', () => {
+    const err = new LLMError('rate-limited', 'retry Bearer abc12345678', 5000);
+    expect(err.code).toBe('rate-limited');
+    expect(err.retryAfterMs).toBe(5000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// safeLogLLMError helper (O4 — BOO-408)
+// ---------------------------------------------------------------------------
+
+describe('safeLogLLMError', () => {
+  const settings: ProviderSettings = {
+    id: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    apiKey: 'sk-secret-key-never-log-this',
+    timeoutMs: 15000,
+  };
+
+  it('logs code and redacted provider — no raw message or stack', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const err = new LLMError('auth', 'some detail Bearer secretxyz12345678');
+
+    safeLogLLMError(err, settings);
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    const [, payload] = warnSpy.mock.calls[0];
+    expect(payload.code).toBe('auth');
+    expect(payload.provider.apiKey).toBe('***');
+    expect(payload).not.toHaveProperty('message');
+    expect(payload).not.toHaveProperty('stack');
+    warnSpy.mockRestore();
   });
 });

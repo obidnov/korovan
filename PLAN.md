@@ -1,8 +1,8 @@
 # korovan — Product plan
 
-**Revision:** v2 (2026-06-14)
+**Revision:** v2.1 (2026-06-14)
 **Author:** CEO
-**Status:** Board-approved on Q1–Q4 (2026-06-14, comment `09bf8df3`). Handed off to Tech Lead for P0+P1 engineering decomposition. See §7 for locked answers and §10 for the v2 delta.
+**Status:** Board-approved on Q1–Q4 (2026-06-14, comment `09bf8df3`); refined by board comment `61c8898b` on Q1 provider priority (DeepSeek first). Handed off to Tech Lead for P0+P1 engineering decomposition. See §7 for locked answers and §10 for the v2 + v2.1 deltas.
 **Source brief:** [BOO-374](paperclip://issues/BOO-374) — Kirill's original wishlist, preserved verbatim in §1.
 
 ---
@@ -33,7 +33,7 @@
 | **Dense forest with LOD** | Far trees = billboards, near trees = 3D meshes. The elf zone *feels* dense and oppressive — visual identity of the game. |
 | **Daggerfall-lite economy** | Shops, currency, gear progression. Buy weapons, armor, healing items, **prosthetics**. |
 | **Limb-and-wound system** | Real consequence layer. Lose a hand → bleed out unless healed. Lose an eye → half-screen black until prosthetic. Lose a leg → crawl / wheelchair / prosthetic. Differentiator vs. typical web action games. |
-| **🆕 Pluggable LLM-agent opponent** | The opposing faction is commanded by an LLM agent via external API. Provider-agnostic: OpenAI-compatible client by default, with adapters for DeepSeek and Anthropic. Player configures provider + base URL + model + API key in-game settings (stored locally, never hard-coded). Fallback scripted AI runs when no agent is configured or the provider is unreachable, so the game is always playable offline. |
+| **🆕 Pluggable LLM-agent opponent** | The opposing faction is commanded by an LLM agent via external API. Provider-agnostic architecture with **DeepSeek as the default and only provider that ships in P1** (board priority `61c8898b`); Anthropic-compatible and OpenAI-compatible adapters land in later phases via the same `LLMProvider` interface. Player configures provider + base URL + model + API key in-game settings (stored locally, never hard-coded). Fallback scripted AI runs when no agent is configured or the provider is unreachable, so the game is always playable offline. |
 | **Persistence** | Save game. (MVP: localStorage. v1.0: optional cloud save.) |
 | **Web-native** | No install. Runs in modern browsers via WebGL/WebGPU. |
 
@@ -50,8 +50,8 @@
 - Enemies: 1 type (palace soldier patrol). **Scripted AI** drives moment-to-moment behavior (idle → chase → attack → die). This always runs offline.
 - World: dense forest with LOD (billboard ↔ 3D mesh swap), wooden elf houses (3 static models), simple ground
 - Signature mechanic: **1 caravan route** — a cart with loot patrols a fixed path, player can intercept and grab loot
-- 🆕 **AI-agent provider settings UI** — pick provider (OpenAI-compatible / DeepSeek / Anthropic), set base URL + model + API key, "test connection" button. Persisted to localStorage. *No game-impacting calls yet in MVP* — this is the scaffold so P2 can activate strategic decisions.
-- 🆕 **AI-agent client scaffold** (provider-agnostic) — wired up but only used to validate the connection in MVP. Real strategic decisions land in P2 alongside faction command surface.
+- 🆕 **AI-agent provider settings UI** — for MVP/P1 the only provider option is **DeepSeek**; UI exposes base URL + model + API key fields + "test connection" button. Provider-picker dropdown lands when the second adapter ships (post-P1). Persisted to localStorage. *No game-impacting calls yet in MVP* — this is the scaffold so P2 can activate strategic decisions.
+- 🆕 **AI-agent client scaffold** — provider-agnostic `LLMProvider` interface with a **single concrete implementation in P1: DeepSeek adapter**. Wired up but only used to validate the connection in MVP. Real strategic decisions land in P2 alongside faction command surface. Anthropic and OpenAI-compatible adapters ship as follow-up issues, slotted alongside P2.
 - Persistence: save HP / position / loot / provider settings to localStorage
 - UI: HP bar, loot counter, save/load buttons, main menu, **provider settings panel**
 - Audio: footsteps, sword swing, hit, ambient forest loop (4 sounds total)
@@ -90,7 +90,7 @@ Total: ~6–8 months calendar for a small team (1 eng + part-time art + part-tim
 | Audio | Web Audio API direct + Howler.js for sprites | Cheap, works everywhere. |
 | Save | localStorage (P1) → IndexedDB via `idb` (P2+) → optional cloud (P5) | Incremental. |
 | Assets | Stylized low-poly, glTF format | Web-friendly; CC0 from [kenney.nl](https://kenney.nl/) and [Quaternius](https://quaternius.com/) as placeholders. **Art direction locked: stylized low-poly** (board sign-off Q2). |
-| 🆕 **AI Agent layer** | OpenAI-compatible client by default (fetch-based, no SDK lock-in), plus thin adapters for DeepSeek and Anthropic. Structured tool-calling preferred; JSON-schema fallback. **Scripted AI** is the always-on fallback. | Provider-agnostic per board direction. Settings (base URL, model, key) live in localStorage. See §5a. |
+| 🆕 **AI Agent layer** | Provider-agnostic `LLMProvider` interface (fetch-based, no SDK lock-in). **P1 ships DeepSeek adapter only** (board priority `61c8898b`); Anthropic-compatible and OpenAI-compatible adapters are filed as follow-up issues for post-P1. Structured tool-calling preferred; JSON-schema fallback. **Scripted AI** is the always-on fallback. | Provider-agnostic per board direction. Settings (base URL, model, key) live in localStorage. See §5a. |
 | Hosting | Static hosting (Vercel / GitHub Pages) | Game is fully client-side; trivial deploy. **No backend** (Q1 sign-off — no human-vs-human netcode). |
 | CI | GitHub Actions: typecheck + bundle-size budget check | Don't ship a 50 MB tab. |
 
@@ -125,7 +125,7 @@ Total: ~6–8 months calendar for a small team (1 eng + part-time art + part-tim
 
 **Key design choices:**
 1. **Tempo separation.** LLM ticks are slow (5–15 s) and operate on strategic state, not per-frame. Game loop never blocks on a network call. Commands arrive asynchronously into a queue.
-2. **Provider-agnostic by default.** Concrete shape: `interface LLMProvider { complete(messages, tools?): Promise<Response>; }`. Adapters translate to/from each provider's HTTP wire format. OpenAI-compat is the de-facto baseline; many providers (incl. local Ollama, DeepSeek's REST) speak it natively.
+2. **Provider-agnostic interface, DeepSeek-first rollout.** Concrete shape: `interface LLMProvider { complete(messages, tools?): Promise<Response>; }`. Adapters translate to/from each provider's HTTP wire format. **P1 ships the DeepSeek adapter only** (board priority `61c8898b` — it is the MVP default). Anthropic-compatible and OpenAI-compatible adapters are filed as follow-up issues against the same interface and slot into the codebase without re-architecting. Many providers (incl. local Ollama, DeepSeek's REST) speak OpenAI-compat natively, so that adapter doubles as a generic "bring your own endpoint" path later.
 3. **Settings persistence.** Provider id, base URL, model, API key live in localStorage. **Never bundled into source.** UI offers "test connection" and clear errors.
 4. **Structured output.** Prefer the provider's tool-calling / function-calling API for command emission (`emit_command({type: 'patrol', targetZone: 'elf-forest', units: [...]})`). Fallback to a JSON schema prompt + parse-and-validate when the provider doesn't support tools.
 5. **Fallback.** When no provider is configured, the provider returns an error, or a response fails validation/timeout, the scripted AI immediately resumes that faction's command stream. This is not a degraded mode — it's a first-class playable mode. MVP ships scripted-only because that's the offline-safe baseline.
@@ -153,7 +153,7 @@ All four questions answered by the board in comment `09bf8df3`. Quoted answers b
 
 | # | Question | CEO recommendation (v1) | **Board decision (v2)** |
 |---|---|---|---|
-| **Q1** | Multiplayer or single-player? | Single-player AI | ✅ **Single-player + pluggable LLM-agent opponent**. No human-vs-human netcode. Opposing faction(s) driven by LLM via external API (provider-agnostic: OpenAI-compatible default, adapters for DeepSeek and Anthropic). Settings live in UI; localStorage only. Scripted-AI fallback when not configured or unreachable. See §5a. |
+| **Q1** | Multiplayer or single-player? | Single-player AI | ✅ **Single-player + pluggable LLM-agent opponent**. No human-vs-human netcode. Opposing faction(s) driven by LLM via external API behind a provider-agnostic interface. **Provider priority refined by board comment `61c8898b` (v2.1): DeepSeek = MVP/P1 default and only adapter in P1**; Anthropic-compatible and OpenAI-compatible adapters are follow-up issues post-P1. Settings live in UI; localStorage only. Scripted-AI fallback when not configured or unreachable. See §5a. |
 | **Q2** | Art direction | Stylized low-poly | ✅ **Stylized low-poly** (accepted as recommended) |
 | **Q3** | Engine pick | Three.js + Rapier + Vite + TS | ✅ **Three.js + Rapier + Vite + TypeScript** (accepted as recommended) |
 | **Q4** | Caravans: elves only or all factions? | All factions | ✅ **All three factions** can intercept and rob caravans (accepted as recommended) |
@@ -170,7 +170,7 @@ Filed as child issue to Tech Lead alongside this v2 (separate paperclip issue). 
 - Art-style mood-board sign-off (stylized low-poly references, color palette)
 - Save-format schema v1 (versioned, migration-ready)
 - Asset pipeline (glTF loader, first 5 CC0 placeholder models — tree mesh, tree billboard, elf house, player capsule, palace soldier)
-- 🆕 **AI-agent provider abstraction spec** (`LLMProvider` interface, command schema, error-fallback semantics, settings storage format)
+- 🆕 **AI-agent provider abstraction spec** (`LLMProvider` interface, command schema, error-fallback semantics, settings storage format) — must explicitly anticipate DeepSeek + Anthropic + OpenAI-compat wire formats even though only DeepSeek ships in P1, so later adapters drop in cleanly
 
 **P1 issues** (vertical slice / MVP, ~12 issues):
 - Scene + 3rd-person camera + WASD controls + jump
@@ -183,8 +183,11 @@ Filed as child issue to Tech Lead alongside this v2 (separate paperclip issue). 
 - Save/load to localStorage (HP, position, loot, provider settings)
 - Main menu + HUD (HP bar, loot counter, save button)
 - Audio integration (4 placeholder sounds via Howler)
-- 🆕 **AI-agent client scaffold** (OpenAI-compatible client + DeepSeek + Anthropic adapters; structured tool-call path; JSON-schema fallback path)
-- 🆕 **Provider settings UI** (provider dropdown, base URL, model, key fields, "test connection" button, error display)
+- 🆕 **AI-agent client scaffold** — provider-agnostic `LLMProvider` interface + structured tool-call path + JSON-schema fallback path. **No concrete adapters in this issue** — only the interface and the wiring
+- 🆕 **DeepSeek adapter (P1 first-and-only AI-agent provider)** — concrete `LLMProvider` implementation for DeepSeek's REST API, including auth, tool-calling, error mapping, "ping" call for the settings UI
+- 🆕 **Provider settings UI** (DeepSeek-only fields in P1: base URL + model + API key + "test connection". Provider dropdown structure stubbed but disabled until the next adapter lands)
+- 🆕 **Follow-up issue: Anthropic adapter** — filed but not in P1 scope; activated alongside or after P2
+- 🆕 **Follow-up issue: OpenAI-compatible adapter** — filed but not in P1 scope; doubles as the generic "bring-your-own-endpoint" path
 
 **P2–P5 issues** filed at the start of each phase. P2 adds the headline LLM-go-live work: serializer for strategic state, command parser/validator, AgentRouter wiring scripted ↔ LLM, faction strategic surface (patrol/raid/target schedules).
 
@@ -201,7 +204,21 @@ Filed as child issue to Tech Lead alongside this v2 (separate paperclip issue). 
 
 ---
 
-## 10. v2 delta vs v1
+## 10. v2.1 delta vs v2
+
+Refinement-only patch from board comment `61c8898b`:
+
+1. **Provider priority locked.** DeepSeek = MVP/P1 default and *only* adapter in P1. Anthropic-compatible and OpenAI-compatible become follow-up issues, slotted post-P1 via the same `LLMProvider` interface.
+2. **§2 pillar row** rewritten to call out DeepSeek-first rollout.
+3. **§3 MVP scope:** settings UI exposes DeepSeek-only fields in P1; provider-picker dropdown stubbed but disabled until adapter #2 lands. AI-agent client scaffold ships with one concrete adapter (DeepSeek).
+4. **§5 tech stack** AI Agent layer row updated.
+5. **§5a design choice #2** rewritten to spell out DeepSeek-first rollout sequencing.
+6. **§7 Q1** answer enriched with provider priority.
+7. **§8 decomposition preview:** AI-agent client work split into three rows — interface scaffold, DeepSeek adapter (P1 first task), provider settings UI — plus two filed-but-deferred follow-up rows for Anthropic and OpenAI-compat adapters.
+8. **TL handoff (BOO-375)** description updated to match.
+9. No changes to: risk register (§6 still covers all three providers structurally), non-goals (§9), MVP success criteria (§3) — DeepSeek's "ping" satisfies criterion 5 unchanged.
+
+## 10a. v2 delta vs v1
 
 What changed since the original draft:
 
@@ -219,5 +236,6 @@ What changed since the original draft:
 
 *Revision history*
 
+- **v2.1 (2026-06-14)** — Board refinement on provider priority (`61c8898b`). DeepSeek = MVP/P1 default and only adapter in P1; Anthropic + OpenAI-compat become follow-up issues. §2, §3, §5, §5a, §7, §8, §10 updated. TL handoff (BOO-375) description synced.
 - **v2 (2026-06-14)** — Board sign-off Q1–Q4. New product pillar: pluggable LLM-agent opponent. Architecture in §5a. Risk register, MVP, roadmap, decomposition preview updated accordingly. Handed off to TL.
 - **v1 (2026-06-14)** — Initial draft. Awaiting board sign-off on Q1–Q4 (§7).

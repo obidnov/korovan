@@ -18,8 +18,8 @@ export async function createPhysics(): Promise<PhysicsContext> {
 
 export function addStaticGround(world: RAPIER.World): RAPIER.RigidBody {
   const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed())
-  // Half-extents: 50 m wide/deep, 0.1 m tall → visual y ≈ -0.1 centre
-  world.createCollider(RAPIER.ColliderDesc.cuboid(50, 0.1, 50), body)
+  // Collider centre at y=-0.1 so top sits at y=0, matching the visual mesh top (mesh at y=-0.1 centre, height 0.2)
+  world.createCollider(RAPIER.ColliderDesc.cuboid(50, 0.1, 50).setTranslation(0, -0.1, 0), body)
   return body
 }
 

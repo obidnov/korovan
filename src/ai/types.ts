@@ -90,7 +90,7 @@ export type LLMErrorCode =
 // Defense-in-depth: catches adapter-implementer mistakes that echo auth headers.
 const SECRET_PATTERNS: RegExp[] = [
   /Bearer\s+[A-Za-z0-9_\-.]{8,}/gi,
-  /sk-[A-Za-z0-9_\-]{16,}/g,
+  /sk-[A-Za-z0-9_-]{16,}/g,
   /x-api-key:\s*\S+/gi,
 ];
 

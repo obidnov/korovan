@@ -51,10 +51,11 @@ export interface ProviderSettings {
   timeoutMs: number;
 }
 
+/** Branded redacted view — compile-time-distinct from ProviderSettings (BOO-408 O1). */
+export type RedactedProviderSettings = Omit<ProviderSettings, 'apiKey'> & { apiKey: '***' };
+
 /** Returns a copy of ProviderSettings safe for logging — apiKey is redacted. */
-export function redactProviderSettings(
-  s: ProviderSettings,
-): Omit<ProviderSettings, 'apiKey'> & { apiKey: string } {
+export function redactProviderSettings(s: ProviderSettings): RedactedProviderSettings {
   return { ...s, apiKey: '***' };
 }
 
@@ -85,6 +86,18 @@ export type LLMErrorCode =
   | 'provider-unreachable'
   | 'invalid-shape';
 
+// Strips recognisable secret patterns from error messages (BOO-408 O2).
+// Defense-in-depth: catches adapter-implementer mistakes that echo auth headers.
+const SECRET_PATTERNS: RegExp[] = [
+  /Bearer\s+[A-Za-z0-9_\-.]{8,}/gi,
+  /sk-[A-Za-z0-9_\-]{16,}/g,
+  /x-api-key:\s*\S+/gi,
+];
+
+function scrubSecrets(s: string): string {
+  return SECRET_PATTERNS.reduce((acc, re) => acc.replace(re, '<redacted>'), s);
+}
+
 export class LLMError extends Error {
   override readonly name = 'LLMError';
 
@@ -93,6 +106,6 @@ export class LLMError extends Error {
     message: string,
     public readonly retryAfterMs?: number,
   ) {
-    super(message);
+    super(scrubSecrets(message));
   }
 }

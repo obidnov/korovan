@@ -22,6 +22,16 @@ import { createCartEntity, buildCartMesh } from './game/caravan/cartEntity'
 import { createEscortEntity, type EscortEntity } from './game/caravan/escortEntity'
 import { createLootHud } from './game/caravan/lootHud'
 import { createInventory, LOOT_GOLD, LOOT_WOOD, LOOT_IRON_ORE } from './game/inventory'
+import {
+  createProviderSettingsPanel,
+  loadProviderSettings,
+} from './ui/providerSettings'
+import { createMainMenu } from './ui/mainMenu'
+import { createHud } from './ui/hud'
+import { createPauseMenu } from './ui/pauseMenu'
+import { hasSave, loadRaw, persistRaw } from './save/storage'
+import { validateSaveV1, type SaveV1 } from './save/schema'
+import type { ProviderSettings } from './ai/types'
 
 // ---------------------------------------------------------------------------
 // Combat constants
@@ -31,9 +41,7 @@ const PLAYER_MAX_HP = 100
 const SWORD_DAMAGE = 25
 const SOLDIER_MELEE_DAMAGE = 10
 const ESCORT_MELEE_DAMAGE = 10
-/** Radius (m) of the hit-sphere placed in front of the player on swing. */
 const PLAYER_HIT_RADIUS = 1.1
-/** Distance (m) the hit-sphere centre is placed in front of the player. */
 const PLAYER_HIT_REACH = 1.3
 
 // ---------------------------------------------------------------------------
@@ -41,11 +49,48 @@ const PLAYER_HIT_REACH = 1.3
 // ---------------------------------------------------------------------------
 
 const ESCORT_OFFSETS: ReadonlyArray<{ x: number; z: number }> = [
-  { x: -2, z: 0 }, // left flank
-  { x: 2, z: 0 },  // right flank
+  { x: -2, z: 0 },
+  { x: 2, z: 0 },
 ]
 
-async function main() {
+// ---------------------------------------------------------------------------
+// Provider settings panel — shared between main menu and HUD
+// ---------------------------------------------------------------------------
+
+const providerSettingsPanel = createProviderSettingsPanel()
+
+// ---------------------------------------------------------------------------
+// Main menu — shown immediately before game loads
+// ---------------------------------------------------------------------------
+
+const mainMenu = createMainMenu({
+  onNewGame: () => startGame(null),
+  onContinue: () => {
+    const raw = loadRaw()
+    let savedState: SaveV1 | null = null
+    if (raw !== null) {
+      try {
+        savedState = validateSaveV1(raw)
+      } catch {
+        // Corrupt save — start fresh
+        console.warn('[korovan] corrupt save data, starting fresh')
+      }
+    }
+    startGame(savedState)
+  },
+  onProviderSettings: () => providerSettingsPanel.open(),
+})
+
+mainMenu.setContinueAvailable(hasSave())
+mainMenu.show()
+
+// ---------------------------------------------------------------------------
+// Game bootstrap — called once per session (New Game or Continue)
+// ---------------------------------------------------------------------------
+
+async function startGame(savedState: SaveV1 | null): Promise<void> {
+  mainMenu.hide()
+
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement
 
   const stats = new Stats()
@@ -102,7 +147,7 @@ async function main() {
   })
 
   // -------------------------------------------------------------------------
-  // Palace soldiers (independent of caravan)
+  // Palace soldiers
   // -------------------------------------------------------------------------
 
   const aiScheduler = createNoopAiScheduler()
@@ -125,16 +170,15 @@ async function main() {
   // Caravan system
   // -------------------------------------------------------------------------
 
-  const caravanFsm = createCaravanFsm()
+  const caravanFsm = createCaravanFsm(savedState?.world.caravanState ?? {})
   const initialCartPos = CARAVAN_ROUTE[0]
 
   const cartMesh = buildCartMesh()
   const cartEntity = createCartEntity(cartMesh, scene, world, initialCartPos)
 
   const lootHud = createLootHud()
-  const inventory = createInventory()
+  const inventory = createInventory(savedState?.player.inventory ?? [])
 
-  /** Live escort array — mutated in-place (push on spawn, splice on death/respawn). */
   const escorts: EscortEntity[] = []
 
   async function spawnEscorts(cartPosition: { x: number; z: number }): Promise<void> {
@@ -171,6 +215,74 @@ async function main() {
 
   await spawnEscorts(initialCartPos)
 
+  // Restore HP and position from save
+  if (savedState !== null) {
+    const savedHp = savedState.player.hp
+    if (savedHp < PLAYER_MAX_HP) {
+      playerHp.takeDamage(PLAYER_MAX_HP - savedHp)
+    }
+    const [px, py, pz] = savedState.player.position
+    player.teleport({ x: px, y: py, z: pz })
+  }
+
+  // -------------------------------------------------------------------------
+  // HUD
+  // -------------------------------------------------------------------------
+
+  const ps = loadProviderSettings() as Partial<ProviderSettings>
+  const providerLabel: string = ps.id ?? 'scripted-fallback'
+
+  function buildSaveData(): SaveV1 {
+    const pos = player.getPosition()
+    const cur = loadProviderSettings() as Partial<ProviderSettings>
+    const provider: ProviderSettings = {
+      id: cur.id ?? 'deepseek',
+      baseUrl: cur.baseUrl ?? 'https://api.deepseek.com/v1',
+      model: cur.model ?? 'deepseek-chat',
+      apiKey: cur.apiKey ?? '',
+      timeoutMs: cur.timeoutMs ?? 20_000,
+    }
+    return {
+      version: 1,
+      player: {
+        hp: playerHp.hp,
+        position: [pos.x, pos.y, pos.z],
+        inventory: inventory.toSave(),
+      },
+      world: {
+        caravanState: caravanFsm.toSaveState(),
+      },
+      settings: { provider },
+    }
+  }
+
+  const hud = createHud({
+    onSave: () => persistRaw(buildSaveData()),
+    onProviderSettings: () => providerSettingsPanel.open(),
+  })
+  hud.setHp(playerHp.hp, PLAYER_MAX_HP)
+  hud.setInventory(inventory.list())
+  hud.setProvider(providerLabel)
+  hud.show()
+
+  inventory.onChange((items) => hud.setInventory(items))
+
+  // -------------------------------------------------------------------------
+  // Pause menu
+  // -------------------------------------------------------------------------
+
+  let paused = false
+
+  const pauseMenu = createPauseMenu({
+    onResume: () => {
+      paused = false
+      canvas.requestPointerLock()
+    },
+    onSave: () => persistRaw(buildSaveData()),
+    onProviderSettings: () => providerSettingsPanel.open(),
+    onMainMenu: () => location.reload(),
+  })
+
   // -------------------------------------------------------------------------
   // Pointer lock + resize
   // -------------------------------------------------------------------------
@@ -194,10 +306,22 @@ async function main() {
   const hint = document.createElement('div')
   hint.id = 'pointer-hint'
   hint.textContent =
-    'Click to capture mouse — WASD move, Space jump, LMB attack, E interact, Esc release'
+    'Click to capture mouse — WASD move, Space jump, LMB attack, E interact, Esc pause'
   document.body.appendChild(hint)
+
   document.addEventListener('pointerlockchange', () => {
-    hint.style.display = document.pointerLockElement === canvas ? 'none' : 'block'
+    const locked = document.pointerLockElement === canvas
+    hint.style.display = locked ? 'none' : 'block'
+
+    // Pointer lock released (Esc during play) → open pause menu
+    if (!locked && !pauseMenu.isOpen) {
+      paused = true
+      pauseMenu.open()
+    }
+  })
+
+  canvas.addEventListener('click', () => {
+    if (!pauseMenu.isOpen) canvas.requestPointerLock()
   })
 
   // -------------------------------------------------------------------------
@@ -207,6 +331,8 @@ async function main() {
   const loop = createLoop()
 
   loop.addTickCallback((dt) => {
+    if (paused) return
+
     stats.begin()
 
     if (pendingRespawn) {
@@ -220,8 +346,11 @@ async function main() {
 
     const playerPos = player.getPosition()
 
+    // Update HP bar every frame (throttled inside setHp)
+    hud.setHp(playerHp.hp, PLAYER_MAX_HP)
+
     // -----------------------------------------------------------------------
-    // Sword swing + hit detection (palace soldiers + caravan escorts)
+    // Sword swing + hit detection
     // -----------------------------------------------------------------------
 
     const hitThisFrame = sword.tick(dt, input.state.attack && !isRespawning)
@@ -239,7 +368,6 @@ async function main() {
 
       let didHit = false
 
-      // Palace soldiers
       for (const soldier of soldiers) {
         const snap = soldier.fsm.getSnapshot()
         if (snap.isDead) continue
@@ -252,7 +380,6 @@ async function main() {
         }
       }
 
-      // Caravan escorts
       for (const escort of escorts) {
         const snap = escort.fsm.getSnapshot()
         if (snap.isDead) continue
@@ -305,10 +432,8 @@ async function main() {
     caravanFsm.tick(dt)
     const caravanSnap = caravanFsm.getSnapshot()
 
-    // Sync cart mesh/body to FSM position
     cartEntity.sync(caravanSnap)
 
-    // Re-spawn escorts when caravan resets after cooldown
     if (caravanSnap.didRespawn) {
       void spawnEscorts(caravanSnap.cartPosition)
     }
@@ -373,5 +498,3 @@ async function main() {
 
   loop.start()
 }
-
-main().catch(console.error)

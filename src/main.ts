@@ -13,6 +13,22 @@ import { spawnHouses } from './scene/houses'
 import { createSoldierEntity, buildSoldierMesh, type SoldierEntity } from './game/ai/soldierEntity'
 import { createNoopAiScheduler } from './game/ai/aiScheduler'
 import { SOLDIER_SPAWNS } from './game/ai/soldierSpawns'
+import { createHpComponent } from './game/combat/hp'
+import { createMeleeWeapon } from './game/combat/meleeWeapon'
+import { createDeathScreen } from './game/combat/deathScreen'
+import { swordSwing, hit } from './audio/sounds'
+
+// ---------------------------------------------------------------------------
+// Combat constants
+// ---------------------------------------------------------------------------
+
+const PLAYER_MAX_HP = 100
+const SWORD_DAMAGE = 25
+const SOLDIER_MELEE_DAMAGE = 10
+/** Radius (m) of the hit-sphere placed in front of the player on swing. */
+const PLAYER_HIT_RADIUS = 1.1
+/** Distance (m) the hit-sphere centre is placed in front of the player. */
+const PLAYER_HIT_REACH = 1.3
 
 async function main() {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement
@@ -23,21 +39,17 @@ async function main() {
 
   const { renderer, scene } = createRenderer(canvas)
 
-  // Own perspective camera so third-person camera module controls it directly
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200)
   scene.add(camera)
 
-  // Blended green/brown terrain plane (200×200, surface at y=0)
   createTerrain(scene)
 
-  // Physics
   const { world, step } = await createPhysics()
   addStaticGround(world)
 
-  // Spawn elf village — GLB + Rapier colliders (non-blocking; houses appear ~1 frame later)
   spawnHouses(scene, world).catch(console.error)
 
-  // Player mesh — try GLB first, fallback to capsule primitive
+  // Player mesh
   let playerMesh: THREE.Object3D
   try {
     const gltf = await loadGLTF('/assets/player.glb')
@@ -45,7 +57,6 @@ async function main() {
     playerMesh.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true
     })
-    playerMesh.scale.setScalar(1)
   } catch {
     playerMesh = buildCapsuleMesh()
   }
@@ -54,7 +65,31 @@ async function main() {
   const thirdPersonCam = createThirdPersonCamera(camera, scene)
   const input = createInputHandler(canvas)
 
-  // Palace soldiers — scripted AI FSM (idle/chase/attack/die)
+  // -------------------------------------------------------------------------
+  // Combat setup
+  // -------------------------------------------------------------------------
+
+  const playerHp = createHpComponent(PLAYER_MAX_HP)
+  const deathScreen = createDeathScreen()
+  const sword = createMeleeWeapon(playerMesh)
+
+  let pendingRespawn = false
+  let isRespawning = false
+
+  playerHp.onDeath(() => {
+    if (isRespawning) return
+    isRespawning = true
+    deathScreen.show(() => {
+      playerHp.reset()
+      pendingRespawn = true
+      isRespawning = false
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Soldiers
+  // -------------------------------------------------------------------------
+
   const aiScheduler = createNoopAiScheduler()
   const soldiers: SoldierEntity[] = []
   for (const spawnCfg of SOLDIER_SPAWNS) {
@@ -71,15 +106,12 @@ async function main() {
     soldiers.push(createSoldierEntity(spawnCfg, soldierMesh, scene, world))
   }
 
-  // Feed mouse deltas to camera (only while pointer is locked)
-  function onMouseMove(e: MouseEvent) {
+  document.addEventListener('mousemove', (e: MouseEvent) => {
     if (document.pointerLockElement === canvas) {
       thirdPersonCam.onMouseMove(e.movementX, e.movementY)
     }
-  }
-  document.addEventListener('mousemove', onMouseMove)
+  })
 
-  // Resize
   function onResize() {
     const w = window.innerWidth
     const h = window.innerHeight
@@ -90,34 +122,91 @@ async function main() {
   window.addEventListener('resize', onResize)
   onResize()
 
-  // Pointer-lock hint overlay
   const hint = document.createElement('div')
   hint.id = 'pointer-hint'
-  hint.textContent = 'Click to capture mouse — WASD move, Space jump, Esc release'
+  hint.textContent = 'Click to capture mouse — WASD move, Space jump, LMB attack, Esc release'
   document.body.appendChild(hint)
   document.addEventListener('pointerlockchange', () => {
     hint.style.display = document.pointerLockElement === canvas ? 'none' : 'block'
   })
+
+  // -------------------------------------------------------------------------
+  // Game loop
+  // -------------------------------------------------------------------------
 
   const loop = createLoop()
 
   loop.addTickCallback((dt) => {
     stats.begin()
 
+    if (pendingRespawn) {
+      pendingRespawn = false
+      player.teleport({ x: 0, y: 2, z: 0 })
+    }
+
     step()
     player.update(dt, input.state, thirdPersonCam.yaw)
     thirdPersonCam.update(dt, player.getPosition())
 
-    // AI: strategic tick (noop in P1; P2 LLM driver substitutes here)
     const playerPos = player.getPosition()
-    const playerInput = { playerPosition: { x: playerPos.x, y: playerPos.y, z: playerPos.z } }
+
+    // -----------------------------------------------------------------------
+    // Sword swing + hit detection
+    // -----------------------------------------------------------------------
+
+    const hitThisFrame = sword.tick(dt, input.state.attack && !isRespawning)
+
+    if (hitThisFrame) {
+      swordSwing.play()
+
+      const facingY = playerMesh.rotation.y
+      const fwdX = Math.sin(facingY)
+      const fwdZ = Math.cos(facingY)
+      const hitCX = playerPos.x + fwdX * PLAYER_HIT_REACH
+      const hitCY = playerPos.y
+      const hitCZ = playerPos.z + fwdZ * PLAYER_HIT_REACH
+      const rSq = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS
+
+      let didHit = false
+      for (const soldier of soldiers) {
+        const snap = soldier.fsm.getSnapshot()
+        if (snap.isDead) continue
+        const dx = snap.position.x - hitCX
+        const dy = snap.position.y - hitCY
+        const dz = snap.position.z - hitCZ
+        if (dx * dx + dy * dy + dz * dz <= rSq) {
+          soldier.takeDamage(SWORD_DAMAGE)
+          didHit = true
+        }
+      }
+      if (didHit) hit.play()
+    }
+
+    // -----------------------------------------------------------------------
+    // AI tick + soldier melee attacks on player
+    // -----------------------------------------------------------------------
+
+    const playerInput = {
+      playerPosition: { x: playerPos.x, y: playerPos.y, z: playerPos.z },
+    }
     const worldSnap = { playerPosition: playerInput.playerPosition, playerInLineOfSight: true }
     aiScheduler.onStrategicTick(soldiers.map((s) => s.fsm), worldSnap)
 
-    // Soldier per-frame tick + removal of dead soldiers
     for (let i = soldiers.length - 1; i >= 0; i--) {
       const soldier = soldiers[i]
+
+      // Read snapshot BEFORE tick — attackCooldownRemaining === 0 marks a swing frame
+      const snapBefore = soldier.fsm.getSnapshot()
+      const soldierSwingsNow =
+        snapBefore.stateId === 'attack' && snapBefore.attackCooldownRemaining === 0
+
       soldier.tick(dt, playerInput)
+
+      if (soldierSwingsNow && !playerHp.isDead && !isRespawning) {
+        playerHp.takeDamage(SOLDIER_MELEE_DAMAGE)
+        hit.play()
+      }
+
       if (soldier.fsm.getSnapshot().shouldRemove) {
         soldier.dispose(scene, world)
         soldiers.splice(i, 1)

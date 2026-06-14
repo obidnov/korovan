@@ -10,6 +10,9 @@ import { createInputHandler } from './game/input'
 import { loadGLTF } from './assets/loader'
 import { createTerrain } from './scene/terrain'
 import { spawnHouses } from './scene/houses'
+import { createSoldierEntity, buildSoldierMesh, type SoldierEntity } from './game/ai/soldierEntity'
+import { createNoopAiScheduler } from './game/ai/aiScheduler'
+import { SOLDIER_SPAWNS } from './game/ai/soldierSpawns'
 
 async function main() {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement
@@ -51,6 +54,23 @@ async function main() {
   const thirdPersonCam = createThirdPersonCamera(camera, scene)
   const input = createInputHandler(canvas)
 
+  // Palace soldiers — scripted AI FSM (idle/chase/attack/die)
+  const aiScheduler = createNoopAiScheduler()
+  const soldiers: SoldierEntity[] = []
+  for (const spawnCfg of SOLDIER_SPAWNS) {
+    let soldierMesh: THREE.Object3D
+    try {
+      const gltf = await loadGLTF('/assets/soldier.glb')
+      soldierMesh = gltf.scene.clone(true)
+      soldierMesh.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true
+      })
+    } catch {
+      soldierMesh = buildSoldierMesh()
+    }
+    soldiers.push(createSoldierEntity(spawnCfg, soldierMesh, scene, world))
+  }
+
   // Feed mouse deltas to camera (only while pointer is locked)
   function onMouseMove(e: MouseEvent) {
     if (document.pointerLockElement === canvas) {
@@ -87,6 +107,22 @@ async function main() {
     step()
     player.update(dt, input.state, thirdPersonCam.yaw)
     thirdPersonCam.update(dt, player.getPosition())
+
+    // AI: strategic tick (noop in P1; P2 LLM driver substitutes here)
+    const playerPos = player.getPosition()
+    const playerInput = { playerPosition: { x: playerPos.x, y: playerPos.y, z: playerPos.z } }
+    const worldSnap = { playerPosition: playerInput.playerPosition, playerInLineOfSight: true }
+    aiScheduler.onStrategicTick(soldiers.map((s) => s.fsm), worldSnap)
+
+    // Soldier per-frame tick + removal of dead soldiers
+    for (let i = soldiers.length - 1; i >= 0; i--) {
+      const soldier = soldiers[i]
+      soldier.tick(dt, playerInput)
+      if (soldier.fsm.getSnapshot().shouldRemove) {
+        soldier.dispose(scene, world)
+        soldiers.splice(i, 1)
+      }
+    }
 
     renderer.render(scene, camera)
 

@@ -10,6 +10,11 @@ export default tseslint.config(
   {
     ignores: ['dist/**', 'node_modules/**'],
   },
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
   // Node.js scripts (generator, config files)
   {
     files: ['scripts/**/*.mjs', 'vite.config.ts', 'eslint.config.mjs'],

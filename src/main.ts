@@ -8,6 +8,8 @@ import { createPlayerController, buildCapsuleMesh } from './game/player'
 import { createThirdPersonCamera } from './game/camera'
 import { createInputHandler } from './game/input'
 import { loadGLTF } from './assets/loader'
+import { createTerrain } from './scene/terrain'
+import { spawnHouses } from './scene/houses'
 
 async function main() {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement
@@ -22,18 +24,15 @@ async function main() {
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200)
   scene.add(camera)
 
-  // Ground plane
-  const groundMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(100, 0.2, 100),
-    new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.9 }),
-  )
-  groundMesh.position.y = -0.1
-  groundMesh.receiveShadow = true
-  scene.add(groundMesh)
+  // Blended green/brown terrain plane (200×200, surface at y=0)
+  createTerrain(scene)
 
   // Physics
   const { world, step } = await createPhysics()
   addStaticGround(world)
+
+  // Spawn elf village — GLB + Rapier colliders (non-blocking; houses appear ~1 frame later)
+  spawnHouses(scene, world).catch(console.error)
 
   // Player mesh — try GLB first, fallback to capsule primitive
   let playerMesh: THREE.Object3D
@@ -43,7 +42,6 @@ async function main() {
     playerMesh.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true
     })
-    // Normalise scale — GLB placeholder is ~1 m tall
     playerMesh.scale.setScalar(1)
   } catch {
     playerMesh = buildCapsuleMesh()

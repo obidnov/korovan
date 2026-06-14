@@ -23,6 +23,19 @@ export function addStaticGround(world: RAPIER.World): RAPIER.RigidBody {
   return body
 }
 
+export function addStaticBox(
+  world: RAPIER.World,
+  pos: { x: number; y: number; z: number },
+  halfExtents: { x: number; y: number; z: number },
+): RAPIER.RigidBody {
+  const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed())
+  world.createCollider(
+    RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z).setTranslation(pos.x, pos.y, pos.z),
+    body,
+  )
+  return body
+}
+
 export function addDynamicCube(
   world: RAPIER.World,
   pos: { x: number; y: number; z: number },

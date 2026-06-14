@@ -1,8 +1,8 @@
 # korovan — Product plan
 
-**Revision:** v1 (2026-06-14)
+**Revision:** v2 (2026-06-14)
 **Author:** CEO
-**Status:** Draft — awaiting board sign-off on 4 open decisions (§7) before engineering decomposition begins.
+**Status:** Board-approved on Q1–Q4 (2026-06-14, comment `09bf8df3`). Handed off to Tech Lead for P0+P1 engineering decomposition. See §7 for locked answers and §10 for the v2 delta.
 **Source brief:** [BOO-374](paperclip://issues/BOO-374) — Kirill's original wishlist, preserved verbatim in §1.
 
 ---
@@ -29,16 +29,17 @@
 |---|---|
 | **Three asymmetric factions** | Forest elves (guerilla raiders), Palace guard (disciplined defenders), the Villain (chaotic warlord). Each plays differently — different goals, units, abilities, base zone. |
 | **4-zone overworld** | Neutral humans (trade hub), Emperor's palace, Elf forest, Villain's mountain fort. Travel between zones via overworld map. |
-| **Caravan raiding** | The signature mechanic. Caravans periodically traverse zones; players can intercept and loot them. (Elves by lore; possibly all factions — see §7 Q4.) |
+| **Caravan raiding (universal)** | The signature mechanic. Caravans periodically traverse zones; **all three factions** can intercept and loot them (board sign-off Q4 — see §7). |
 | **Dense forest with LOD** | Far trees = billboards, near trees = 3D meshes. The elf zone *feels* dense and oppressive — visual identity of the game. |
 | **Daggerfall-lite economy** | Shops, currency, gear progression. Buy weapons, armor, healing items, **prosthetics**. |
 | **Limb-and-wound system** | Real consequence layer. Lose a hand → bleed out unless healed. Lose an eye → half-screen black until prosthetic. Lose a leg → crawl / wheelchair / prosthetic. Differentiator vs. typical web action games. |
+| **🆕 Pluggable LLM-agent opponent** | The opposing faction is commanded by an LLM agent via external API. Provider-agnostic: OpenAI-compatible client by default, with adapters for DeepSeek and Anthropic. Player configures provider + base URL + model + API key in-game settings (stored locally, never hard-coded). Fallback scripted AI runs when no agent is configured or the provider is unreachable, so the game is always playable offline. |
 | **Persistence** | Save game. (MVP: localStorage. v1.0: optional cloud save.) |
 | **Web-native** | No install. Runs in modern browsers via WebGL/WebGPU. |
 
 ## 3. MVP definition (what ships first)
 
-**Goal of MVP:** prove the core loop is fun and the tech stack scales, on the smallest possible content footprint.
+**Goal of MVP:** prove the core loop is fun and the tech stack scales, on the smallest possible content footprint. Ship the AI-agent integration *infrastructure* so it can be activated for strategic decisions as soon as the strategic surface exists in P2.
 
 **MVP scope (single playable faction, single zone, vertical slice):**
 
@@ -46,37 +47,38 @@
 - Zone: **Elf forest only** (1 of 4)
 - Movement: WASD + space (jump) + 3rd-person camera
 - Combat: melee swing (1 weapon), HP, hit/death
-- Enemies: 1 type (palace soldier patrol), basic AI (idle → chase → attack → die)
+- Enemies: 1 type (palace soldier patrol). **Scripted AI** drives moment-to-moment behavior (idle → chase → attack → die). This always runs offline.
 - World: dense forest with LOD (billboard ↔ 3D mesh swap), wooden elf houses (3 static models), simple ground
 - Signature mechanic: **1 caravan route** — a cart with loot patrols a fixed path, player can intercept and grab loot
-- Persistence: save HP / position / loot to localStorage
-- UI: HP bar, loot counter, save/load buttons, main menu
+- 🆕 **AI-agent provider settings UI** — pick provider (OpenAI-compatible / DeepSeek / Anthropic), set base URL + model + API key, "test connection" button. Persisted to localStorage. *No game-impacting calls yet in MVP* — this is the scaffold so P2 can activate strategic decisions.
+- 🆕 **AI-agent client scaffold** (provider-agnostic) — wired up but only used to validate the connection in MVP. Real strategic decisions land in P2 alongside faction command surface.
+- Persistence: save HP / position / loot / provider settings to localStorage
+- UI: HP bar, loot counter, save/load buttons, main menu, **provider settings panel**
 - Audio: footsteps, sword swing, hit, ambient forest loop (4 sounds total)
 
-**Out of MVP** (deferred to later phases): other factions, other zones, limb system, shops/economy, commander AI, faction raids, day/night cycle, multiplayer, settings menu.
+**Out of MVP** (deferred to later phases): other factions, other zones, limb system, shops/economy, commander AI, faction raids, day/night cycle, multiplayer, settings menu, **LLM-driven strategic decisions** (infrastructure ships in MVP, *driving* moves to P2).
 
 **MVP success criteria:**
 1. Loads in <10 s on modern desktop browser (cold cache).
 2. Holds 60 fps on mid-range hardware (M1 / iGPU laptop) with ~500 visible trees at LOD.
 3. Player can complete a caravan robbery loop end-to-end (find → engage guards → loot → return to safe spot → save) in <5 minutes.
 4. Demo-able to Kirill in a single tab, no install.
+5. 🆕 Provider settings UI accepts user-supplied OpenAI-compatible credentials and successfully runs a single round-trip "ping" through the AI-agent client.
 
 ## 4. Phased roadmap
 
 | Phase | Theme | Headline deliverables | Rough effort |
 |---|---|---|---|
-| **P0** | Pre-production | Engine pick locked, art direction locked, asset pipeline, repo bootstrap, CI, save-format spec | 1–2 wk |
-| **P1** | Vertical slice (= MVP, §3) | Elf zone playable end-to-end, 1 caravan, 1 enemy, save/load | 4–6 wk |
-| **P2** | Map + 2nd faction | All 4 zones traversable, palace guard faction, commander quest skeleton, basic shops in neutral zone | 4–6 wk |
-| **P3** | Villain + raid loop | Villain faction, squad command (follow/attack), large-scale raid event on palace, faction-vs-faction AI battles | 4–6 wk |
+| **P0** | Pre-production | Engine pick locked, art direction locked, asset pipeline, repo bootstrap, CI, save-format spec, **AI-agent provider abstraction spec** | 1–2 wk |
+| **P1** | Vertical slice (= MVP, §3) | Elf zone playable end-to-end, 1 caravan, 1 enemy, save/load, **AI-agent client scaffold + settings UI + provider ping** | 4–6 wk |
+| **P2** | Map + 2nd faction + 🆕 **LLM agent goes live** | All 4 zones traversable, palace guard faction, commander quest skeleton, basic shops in neutral zone, **LLM agent drives opposing faction's strategic decisions** (patrol routes, raid scheduling, target selection) | 5–7 wk |
+| **P3** | Villain + raid loop | Villain faction, squad command (follow/attack), large-scale raid event on palace, faction-vs-faction AI battles, **LLM expanded to all 3 factions when not player-controlled** | 4–6 wk |
 | **P4** | Limb/wound system | Hit-zone targeting, bleed-out timer, eye/leg/hand wounds, prosthetic items, half-screen-black shader, movement state machine (walk → crawl → wheelchair) | 3–4 wk |
-| **P5** | v1.0 polish | More enemies, more caravans, day/night, audio pass, settings menu, balance, cloud save (optional) | 3–4 wk |
+| **P5** | v1.0 polish | More enemies, more caravans, day/night, audio pass, settings menu, balance, cloud save (optional), **LLM cost dashboard** | 3–4 wk |
 
-Total: ~5–7 months calendar for a small team (1 eng + part-time art + part-time PM/QA). Compress with more headcount on P2/P3 (parallel zones).
+Total: ~6–8 months calendar for a small team (1 eng + part-time art + part-time PM/QA), +1 week vs v1 for the AI-agent layer. Compress with more headcount on P2/P3 (parallel zones).
 
-## 5. Tech stack — recommendation
-
-**Recommended pick (default if Kirill accepts in §7 Q3):**
+## 5. Tech stack — locked (board sign-off Q3, see §7)
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -87,45 +89,104 @@ Total: ~5–7 months calendar for a small team (1 eng + part-time art + part-tim
 | State | Plain TS classes + ECS-lite via [miniplex](https://github.com/hmans/miniplex) | Avoid over-architecting; we're not Unreal. |
 | Audio | Web Audio API direct + Howler.js for sprites | Cheap, works everywhere. |
 | Save | localStorage (P1) → IndexedDB via `idb` (P2+) → optional cloud (P5) | Incremental. |
-| Assets | Stylized low-poly, glTF format | Web-friendly file sizes. CC0 from [kenney.nl](https://kenney.nl/) as placeholder. |
-| Hosting | Static hosting (Vercel / GitHub Pages) | Game is fully client-side; trivial deploy. Multiplayer (if chosen) needs backend — see §7 Q1. |
+| Assets | Stylized low-poly, glTF format | Web-friendly; CC0 from [kenney.nl](https://kenney.nl/) and [Quaternius](https://quaternius.com/) as placeholders. **Art direction locked: stylized low-poly** (board sign-off Q2). |
+| 🆕 **AI Agent layer** | OpenAI-compatible client by default (fetch-based, no SDK lock-in), plus thin adapters for DeepSeek and Anthropic. Structured tool-calling preferred; JSON-schema fallback. **Scripted AI** is the always-on fallback. | Provider-agnostic per board direction. Settings (base URL, model, key) live in localStorage. See §5a. |
+| Hosting | Static hosting (Vercel / GitHub Pages) | Game is fully client-side; trivial deploy. **No backend** (Q1 sign-off — no human-vs-human netcode). |
 | CI | GitHub Actions: typecheck + bundle-size budget check | Don't ship a 50 MB tab. |
 
-**Alternative engine considered:** Babylon.js — batteries-included (physics, GUI, animation editor), but Three has the larger CC0 asset/community footprint and lower runtime overhead for our LOD-heavy use case. **PlayCanvas** considered as commercial-friendly hosted editor but locks us to their platform.
+### 5a. AI-agent layer — architecture (new in v2)
+
+```
+┌────────────────────────────────────────────────┐
+│  Game world (Three.js + Rapier + ECS)          │
+│  ↓ tick (e.g. every 5–15s, not per frame)      │
+│  Strategic state snapshot ────► Serializer    │
+│                                       ↓        │
+│                              ┌────────────────┐│
+│  Faction command queue ◄──── │ AgentRouter    ││
+│                              │  • Provider    ││
+│                              │    chosen by   ││
+│                              │    settings    ││
+│                              │  • Falls back  ││
+│                              │    to scripted ││
+│                              │    on error/   ││
+│                              │    no config   ││
+│                              └────────────────┘│
+└────────────────────────────────────────────────┘
+                  │
+                  ▼ HTTPS
+        ┌──────────────────────┐
+        │ Provider adapter:    │
+        │  • openai-compat     │
+        │  • deepseek          │
+        │  • anthropic         │
+        └──────────────────────┘
+```
+
+**Key design choices:**
+1. **Tempo separation.** LLM ticks are slow (5–15 s) and operate on strategic state, not per-frame. Game loop never blocks on a network call. Commands arrive asynchronously into a queue.
+2. **Provider-agnostic by default.** Concrete shape: `interface LLMProvider { complete(messages, tools?): Promise<Response>; }`. Adapters translate to/from each provider's HTTP wire format. OpenAI-compat is the de-facto baseline; many providers (incl. local Ollama, DeepSeek's REST) speak it natively.
+3. **Settings persistence.** Provider id, base URL, model, API key live in localStorage. **Never bundled into source.** UI offers "test connection" and clear errors.
+4. **Structured output.** Prefer the provider's tool-calling / function-calling API for command emission (`emit_command({type: 'patrol', targetZone: 'elf-forest', units: [...]})`). Fallback to a JSON schema prompt + parse-and-validate when the provider doesn't support tools.
+5. **Fallback.** When no provider is configured, the provider returns an error, or a response fails validation/timeout, the scripted AI immediately resumes that faction's command stream. This is not a degraded mode — it's a first-class playable mode. MVP ships scripted-only because that's the offline-safe baseline.
+6. **Cost guardrails.** Per-session token budget surfaced in the settings UI (P5 polish). Per-call timeouts (default 20s). No retry storms.
 
 ## 6. Risks & mitigations
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Scope is gigantic for a small team | 🔴 High | Brutally narrow MVP (§3). Limb system, multiplayer, shops are explicitly deferred. |
+| Scope is gigantic for a small team | 🔴 High | Brutally narrow MVP (§3). Limb system, shops, LLM strategic decisions are explicitly deferred from MVP. |
 | Dense forest perf in browser | 🟡 Med | `InstancedMesh` for trees + frustum culling + LOD billboard ↔ mesh swap. Budget: ≤500 visible meshes at LOD, ≤5k billboards. |
 | Asset cost (3D models, anims, audio) | 🟡 Med | Start with CC0 (kenney.nl, Quaternius). Hire artist only after P1 proves the loop. |
 | Limb system feels gimmicky or unfun | 🟡 Med | Prototype in P4 with a single hit-zone (right hand) before building the full system. Cut if playtests reject it. |
 | Save format breaks across versions | 🟢 Low | Versioned schema from day 1; migration helper from P2 onward. |
 | Browser fragmentation (WebGPU not universal) | 🟢 Low | WebGL fallback. Three handles this transparently. |
-| Multiplayer creep (if chosen in Q1) | 🔴 High if yes | Single-player MVP is cheaper by ~6 weeks. Defer netcode decision until v1.0 or punt entirely. |
+| 🆕 LLM provider latency disrupts game tempo | 🟡 Med | Strategic ticks operate on 5–15 s cadence, never per-frame. Commands arrive async into a queue; game loop never blocks. Document expected tempo to players in settings UI. |
+| 🆕 LLM provider timeout / outage / API change | 🟡 Med | Per-call timeout (20 s default). On error: surface to player + immediately fall back to scripted AI for that faction. No retry storms. Adapter version pinning in tests. |
+| 🆕 LLM call cost / rate limits | 🟡 Med | Surface token-budget dashboard in settings (P5). User-supplied key = user-paid; we never proxy. Rate-limit handling at adapter level with exponential backoff capped at 3 attempts. |
+| 🆕 Player-supplied API key leaks | 🟡 Med | Keys live in localStorage only; never sent anywhere except directly to the provider over HTTPS. No telemetry on key contents. Settings UI warns "stored locally; clear browser storage to remove". |
+| 🆕 Prompt-injection from in-game text (NPC names, item descriptions) into LLM context | 🟡 Med | Game-state serializer strips/escapes user-generated content. Use system-prompt isolation; treat LLM output as untrusted (validate against schema, reject malformed). |
 
-## 7. Open product decisions — board sign-off required
+## 7. Open product decisions — ✅ RESOLVED (board sign-off 2026-06-14)
 
-These four questions must be answered before TL can decompose this into engineering issues. They cascade into the entire architecture.
+All four questions answered by the board in comment `09bf8df3`. Quoted answers below; CEO recommendations preserved for traceability.
 
-| # | Question | CEO recommendation | Why it matters |
+| # | Question | CEO recommendation (v1) | **Board decision (v2)** |
 |---|---|---|---|
-| **Q1** | **Multiplayer or single-player?** | **Single-player AI** for v1.0. Multiplayer is a separate project. | Multiplayer adds ~6 wk netcode + a backend + lobby + cheat prevention. Brief doesn't specify. |
-| **Q2** | **Art direction** | **Stylized low-poly** (Daggerfall-spiritual, modern stylized colors) | Realistic = 10× asset cost + slow loads. Stylized ships faster and ages better. |
-| **Q3** | **Engine pick** | **Three.js + Rapier + Vite + TS** (per §5) | Locks the entire codebase shape. |
-| **Q4** | **Caravans: elves only, or all factions can rob?** | **All factions** can ambush caravans (signature mechanic should be universal, not faction-locked) | Brief says "эльфу раз лесные то…" implying elves, but "грабить корованы" is the meme heart of the game — universalize. |
+| **Q1** | Multiplayer or single-player? | Single-player AI | ✅ **Single-player + pluggable LLM-agent opponent**. No human-vs-human netcode. Opposing faction(s) driven by LLM via external API (provider-agnostic: OpenAI-compatible default, adapters for DeepSeek and Anthropic). Settings live in UI; localStorage only. Scripted-AI fallback when not configured or unreachable. See §5a. |
+| **Q2** | Art direction | Stylized low-poly | ✅ **Stylized low-poly** (accepted as recommended) |
+| **Q3** | Engine pick | Three.js + Rapier + Vite + TS | ✅ **Three.js + Rapier + Vite + TypeScript** (accepted as recommended) |
+| **Q4** | Caravans: elves only or all factions? | All factions | ✅ **All three factions** can intercept and rob caravans (accepted as recommended) |
 
-I'm posting these as a structured `ask_user_questions` interaction on the parent issue. Once Kirill answers, TL decomposes P0 + P1 into child engineering issues (estimated ~12–18 issues for the vertical slice).
+The `ask_user_questions` interaction (`45a43737`) is auto-superseded by the board's comment.
 
-## 8. Decomposition preview (for context, not yet filed)
+## 8. Decomposition preview — TL handoff
 
-Once Q1–Q4 are answered, TL files these as child issues under BOO-374:
+Filed as child issue to Tech Lead alongside this v2 (separate paperclip issue). TL produces the actual engineering child issues. The list below is *guidance for scope*, not the final issue set.
 
-- **P0 issues** (pre-production, ~5 issues): repo bootstrap + CI + bundler config; engine integration smoke test; art-style mood-board sign-off; save-format schema v1; asset pipeline + first 5 CC0 placeholders.
-- **P1 issues** (vertical slice, ~10 issues): scene + camera + controls; forest LOD system; elf house models; 1 enemy AI; melee combat + HP; caravan path + interaction; loot inventory (in-memory); save/load to localStorage; main menu + HUD; audio integration.
+**P0 issues** (pre-production, ~6 issues):
+- Repo bootstrap: Vite + TS + ESLint + Prettier + GH Actions CI (typecheck + bundle-size budget)
+- Three.js + Rapier integration smoke test (spinning cube + physics ground)
+- Art-style mood-board sign-off (stylized low-poly references, color palette)
+- Save-format schema v1 (versioned, migration-ready)
+- Asset pipeline (glTF loader, first 5 CC0 placeholder models — tree mesh, tree billboard, elf house, player capsule, palace soldier)
+- 🆕 **AI-agent provider abstraction spec** (`LLMProvider` interface, command schema, error-fallback semantics, settings storage format)
 
-P2–P5 issues filed at the start of each phase (don't pre-file v1.0 work — premature).
+**P1 issues** (vertical slice / MVP, ~12 issues):
+- Scene + 3rd-person camera + WASD controls + jump
+- Forest LOD system (InstancedMesh near, billboard far, distance-based swap)
+- Elf house models + simple terrain
+- Palace soldier enemy model + scripted AI state machine (idle/chase/attack/die)
+- Melee combat + HP + death + respawn
+- Caravan path + cart model + intercept interaction + loot transfer
+- Loot inventory (in-memory; serialized to save)
+- Save/load to localStorage (HP, position, loot, provider settings)
+- Main menu + HUD (HP bar, loot counter, save button)
+- Audio integration (4 placeholder sounds via Howler)
+- 🆕 **AI-agent client scaffold** (OpenAI-compatible client + DeepSeek + Anthropic adapters; structured tool-call path; JSON-schema fallback path)
+- 🆕 **Provider settings UI** (provider dropdown, base URL, model, key fields, "test connection" button, error display)
+
+**P2–P5 issues** filed at the start of each phase. P2 adds the headline LLM-go-live work: serializer for strategic state, command parser/validator, AgentRouter wiring scripted ↔ LLM, faction strategic surface (patrol/raid/target schedules).
 
 ## 9. Non-goals (explicitly out)
 
@@ -135,9 +196,28 @@ P2–P5 issues filed at the start of each phase (don't pre-file v1.0 work — pr
 - **Procedural world generation.** All 4 zones are hand-authored.
 - **Modding API.** Post-v1.0.
 - **Story / voice acting.** Lightweight text-only quest UI; no VO until budget exists.
+- 🆕 **Human-vs-human multiplayer / netcode** (locked by Q1 sign-off).
+- 🆕 **Hosting LLM inference ourselves / proxying user calls** — game calls the user's chosen provider *directly* from the browser. No backend, no proxy, no key escrow.
+
+---
+
+## 10. v2 delta vs v1
+
+What changed since the original draft:
+
+1. **Q1–Q4 locked** (§7). Q2/Q3/Q4 accepted as recommended; Q1 evolved from "scripted single-player" → "single-player + pluggable LLM-agent opponent with scripted fallback".
+2. **New product pillar:** §2 row "Pluggable LLM-agent opponent".
+3. **New §5a:** AI-agent layer architecture with diagram + 6 design choices.
+4. **Tech stack table:** new row "AI Agent layer" in §5.
+5. **MVP scope updated** (§3): scripted AI baseline + AI-agent client *scaffold* and settings UI ship in MVP. *Strategic decisions* driven by LLM land in P2 where the strategic surface exists.
+6. **Roadmap updated** (§4): P2 explicitly headlines "LLM agent goes live"; P5 adds cost dashboard. Calendar +1 wk overall.
+7. **Risk register +5 rows** (§6): LLM latency, timeouts/outages, cost/rate limits, key leakage, prompt-injection from in-game text.
+8. **Non-goals +2** (§9): no human-vs-human netcode, no proxying user LLM calls.
+9. **Decomposition preview** (§8) updated to flag the two AI-agent issues in P0 (spec) and P1 (scaffold + settings UI).
 
 ---
 
 *Revision history*
 
+- **v2 (2026-06-14)** — Board sign-off Q1–Q4. New product pillar: pluggable LLM-agent opponent. Architecture in §5a. Risk register, MVP, roadmap, decomposition preview updated accordingly. Handed off to TL.
 - **v1 (2026-06-14)** — Initial draft. Awaiting board sign-off on Q1–Q4 (§7).

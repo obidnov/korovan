@@ -10,4 +10,4 @@ See [PLAN.md](./PLAN.md) for the full product plan: vision, MVP scope, phased ro
 
 ## Status
 
-🪧 **Pre-production / discovery phase.** Product plan drafted; awaiting CEO/board approval on four open decisions (multiplayer? art direction? engine pick? caravan availability across factions?) before engineering decomposition starts.
+✅ **Plan v2 board-approved** (2026-06-14). Locked: stylized low-poly, Three.js + Rapier + Vite + TypeScript, all factions can rob caravans, **single-player with pluggable LLM-agent opponent** (OpenAI-compatible / DeepSeek / Anthropic; scripted-AI fallback when not configured). Handed off to Tech Lead for P0+P1 engineering decomposition.

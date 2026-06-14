@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Bundle size budget check
+        run: |
+          TOTAL=0
+          for f in dist/assets/*.js; do
+            [ -f "$f" ] || continue
+            SZ=$(gzip -c "$f" | wc -c)
+            TOTAL=$((TOTAL + SZ))
+          done
+          BUDGET=$((1500 * 1024))
+          KB=$((TOTAL / 1024))
+          echo "✓ bundle ${KB} KB / 1500 KB (gzipped)"
+          if [ "$TOTAL" -gt "$BUDGET" ]; then
+            echo "❌ bundle too large: ${KB} KB > 1500 KB"
+            exit 1
+          fi

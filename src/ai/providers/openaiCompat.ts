@@ -37,11 +37,28 @@ export function createOpenAICompatProvider(config: OpenAICompatConfig): LLMProvi
     throw new Error('openai-compat: `model` must be specified — no default is baked in');
   }
 
+  // Parse URL early — gives case-insensitive, spec-normalized protocol detection.
+  // `new URL()` lowercases the scheme regardless of user input (HTTP:// → http:),
+  // so the subsequent protocol check is immune to case-sensitivity bypass.
+  let parsedBaseUrl: URL;
+  try {
+    parsedBaseUrl = new URL(baseUrl);
+  } catch {
+    throw new Error('openai-compat: `baseUrl` is not a valid URL');
+  }
+
+  // Block non-http/https protocols (ftp://, file://, etc.) — positive allowlist.
+  if (parsedBaseUrl.protocol !== 'https:' && parsedBaseUrl.protocol !== 'http:') {
+    throw new Error(
+      `openai-compat: unsupported protocol "${parsedBaseUrl.protocol}" — only https:// (remote) and http:// (localhost only) are accepted`,
+    );
+  }
+
   // HTTPS enforcement: block http:// for remote endpoints (key would travel over plaintext).
   // http:// is permitted for localhost so Ollama / llama.cpp work out of the box.
-  if (baseUrl.startsWith('http://')) {
+  // Uses parsed protocol (always lowercase) — avoids HTTP:// case-sensitivity bypass.
+  if (parsedBaseUrl.protocol === 'http:') {
     if (isLocalUrl(baseUrl)) {
-      // Safe for local-only use, but key should be empty here
       console.warn(
         '[openai-compat] http:// URL detected — safe only for localhost. ' +
           'Do NOT use a real API key with a plaintext local endpoint.',
@@ -52,6 +69,16 @@ export function createOpenAICompatProvider(config: OpenAICompatConfig): LLMProvi
           'Use https:// to prevent API key exposure over plaintext.',
       );
     }
+  }
+
+  // N-1: warn when empty apiKey is used with a non-local endpoint.
+  // Local providers (Ollama, llama.cpp) run without auth by design;
+  // remote providers almost always require credentials — empty key likely a misconfiguration.
+  if (!apiKey && !isLocalUrl(baseUrl)) {
+    console.warn(
+      '[openai-compat] empty apiKey with a non-local endpoint — no Authorization header will be sent. ' +
+        'This is unusual for remote providers; verify your configuration.',
+    );
   }
 
   return { complete };

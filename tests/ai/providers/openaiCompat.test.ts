@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from 'vitest';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse, delay } from 'msw';
 import { createOpenAICompatProvider } from '../../../src/ai/providers/openaiCompat.js';
@@ -479,6 +479,49 @@ describe('HTTPS enforcement', () => {
     ).toThrow('http://');
   });
 
+  it('throws on HTTP:// (uppercase scheme) remote base URL — case-insensitive check', () => {
+    // String.prototype.startsWith() is case-sensitive; new URL() normalises scheme to lowercase.
+    // HTTP://api.openai.com must NOT bypass the plaintext-key enforcement.
+    expect(() =>
+      createOpenAICompatProvider({
+        baseUrl: 'HTTP://api.openai.com',
+        apiKey: 'sk-test',
+        model: 'gpt-4o',
+      }),
+    ).toThrow();
+  });
+
+  it('throws on HTTPS:// (uppercase) remote base URL — treated as unsupported protocol', () => {
+    // "HTTPS:" normalised to "https:" by URL constructor → accepted. Verify the positive case.
+    expect(() =>
+      createOpenAICompatProvider({
+        baseUrl: 'HTTPS://api.openai.com',
+        apiKey: 'sk-test',
+        model: 'gpt-4o',
+      }),
+    ).not.toThrow();
+  });
+
+  it('throws on ftp:// base URL (unsupported protocol)', () => {
+    expect(() =>
+      createOpenAICompatProvider({
+        baseUrl: 'ftp://api.openai.com',
+        apiKey: 'sk-test',
+        model: 'gpt-4o',
+      }),
+    ).toThrow('unsupported protocol');
+  });
+
+  it('throws on invalid / unparseable base URL', () => {
+    expect(() =>
+      createOpenAICompatProvider({
+        baseUrl: 'not-a-url',
+        apiKey: 'sk-test',
+        model: 'gpt-4o',
+      }),
+    ).toThrow('not a valid URL');
+  });
+
   it('accepts https:// base URL', () => {
     expect(() =>
       createOpenAICompatProvider({ baseUrl: BASE_URL, apiKey: 'sk-test', model: 'gpt-4o' }),
@@ -503,6 +546,46 @@ describe('HTTPS enforcement', () => {
         model: 'llama3',
       }),
     ).not.toThrow();
+  });
+});
+
+// ─── Empty-key remote-endpoint warning ─────────────────────────────────────
+
+describe('empty-key remote-endpoint warning (N-1)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('warns when apiKey is empty and baseUrl is a remote endpoint', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    createOpenAICompatProvider({
+      baseUrl: 'https://custom.llm-provider.example.com',
+      apiKey: '',
+      model: 'some-model',
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('empty apiKey with a non-local endpoint'),
+    );
+  });
+
+  it('does NOT warn when apiKey is empty and baseUrl is localhost', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    createOpenAICompatProvider({
+      baseUrl: 'http://localhost:11434',
+      apiKey: '',
+      model: 'llama3',
+    });
+    // localhost http:// triggers the "safe for localhost" warn, NOT the empty-key remote warn
+    const warnMessages = warnSpy.mock.calls.map((args) => String(args[0]));
+    expect(warnMessages.some((m) => m.includes('empty apiKey with a non-local endpoint'))).toBe(false);
+  });
+
+  it('does NOT warn when apiKey is non-empty', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    createOpenAICompatProvider({
+      baseUrl: BASE_URL,
+      apiKey: 'sk-present',
+      model: 'gpt-4o',
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
 

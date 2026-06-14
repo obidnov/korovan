@@ -18,7 +18,7 @@ const providerSettingsSchema = z.object({
   timeoutMs: z.number().int().positive(),
 }) satisfies z.ZodType<ProviderSettings>;
 
-const lootItemSchema = z.object({
+export const lootItemSchema = z.object({
   id: z.string(),
   qty: z.number().int().nonnegative(),
 });

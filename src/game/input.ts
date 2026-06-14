@@ -12,6 +12,7 @@ export function createInputHandler(canvas: HTMLCanvasElement): InputHandler {
     left: false,
     right: false,
     jump: false,
+    attack: false,
   }
 
   function onKey(e: KeyboardEvent, down: boolean) {
@@ -50,9 +51,23 @@ export function createInputHandler(canvas: HTMLCanvasElement): InputHandler {
     canvas.requestPointerLock()
   })
 
+  // Left-click attack (only while pointer is locked to the canvas)
+  const onMouseDown = (e: MouseEvent) => {
+    if (e.button === 0 && document.pointerLockElement === canvas) {
+      state.attack = true
+    }
+  }
+  const onMouseUp = (e: MouseEvent) => {
+    if (e.button === 0) state.attack = false
+  }
+  document.addEventListener('mousedown', onMouseDown)
+  document.addEventListener('mouseup', onMouseUp)
+
   function dispose() {
     window.removeEventListener('keydown', keydown)
     window.removeEventListener('keyup', keyup)
+    document.removeEventListener('mousedown', onMouseDown)
+    document.removeEventListener('mouseup', onMouseUp)
   }
 
   return { state, dispose }

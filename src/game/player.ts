@@ -8,6 +8,8 @@ export type InputState = {
   left: boolean
   right: boolean
   jump: boolean
+  /** True while left mouse button is held (pointer-lock only). */
+  attack: boolean
 }
 
 export type PlayerController = {
@@ -16,6 +18,8 @@ export type PlayerController = {
   getPosition(): THREE.Vector3
   /** Call once per physics step with current input + camera yaw. */
   update(dt: number, input: InputState, cameraYaw: number): void
+  /** Instantly move the physics body (and mesh) to the given world position. */
+  teleport(position: { x: number; y: number; z: number }): void
   dispose(): void
 }
 
@@ -123,6 +127,15 @@ export function createPlayerController(
     wasOnGround = onGround
   }
 
+  function teleport(position: { x: number; y: number; z: number }): void {
+    body.setTranslation(position, true)
+    body.setNextKinematicTranslation(position)
+    pos.set(position.x, position.y, position.z)
+    const meshY = position.y - cfg.capsuleHeight / 2
+    mesh.position.set(position.x, meshY, position.z)
+    verticalVelocity = 0
+  }
+
   function dispose(): void {
     scene.remove(mesh)
     world.removeCharacterController(controller)
@@ -130,7 +143,7 @@ export function createPlayerController(
     world.removeRigidBody(body)
   }
 
-  return { mesh, getPosition, update, dispose }
+  return { mesh, getPosition, update, teleport, dispose }
 }
 
 /** Build a placeholder capsule mesh for when the GLB is not yet loaded. */

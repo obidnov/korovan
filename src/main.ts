@@ -239,7 +239,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
       id: cur.id ?? 'deepseek',
       baseUrl: cur.baseUrl ?? 'https://api.deepseek.com/v1',
       model: cur.model ?? 'deepseek-chat',
-      apiKey: cur.apiKey ?? '',
+      apiKey: '',
       timeoutMs: cur.timeoutMs ?? 20_000,
     }
     return {

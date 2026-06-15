@@ -39,7 +39,7 @@ CREATE TABLE leaderboard_entries (
   nickname_snapshot TEXT,                          -- nickname at submission; NULL if player had none
   submitted_at      INTEGER NOT NULL,              -- unix ms
   FOREIGN KEY (player_id) REFERENCES players (player_id)
-  -- No ON DELETE: leaderboard history survives player removal
+  -- No ON DELETE: with PRAGMA foreign_keys=ON, player DELETE is blocked (not dangling) while entries exist
 );
 
 -- Top-N leaderboard query: WHERE zone = ? AND faction = ? ORDER BY score DESC LIMIT ?

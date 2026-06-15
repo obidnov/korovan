@@ -5,6 +5,7 @@ import { accessSync, constants } from 'node:fs'
 import { logger, redactRecord } from './logger'
 import { identityRouter } from './routes/identity'
 import { cookieAuth } from './middleware/cookieAuth'
+import { createRateLimiter, ENDPOINT_PROFILES } from './middleware/rateLimit'
 import { getDb } from './db'
 import { leaderboardRouter } from './routes/leaderboard'
 import { savesRouter } from './routes/saves'
@@ -107,6 +108,12 @@ export function createApp(
   app.use(
     '/api/saves',
     cookieAuth(loader, COOKIE_SECRET),
+    // Bridge: cookieAuth sets req.player; rate limiter reads req.playerId.
+    (req: Request, _res: Response, next: NextFunction): void => {
+      req.playerId = req.player?.id
+      next()
+    },
+    createRateLimiter(ENDPOINT_PROFILES['POST /api/saves']),
     savesRouter,
   )
 

@@ -1,12 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import supertest from 'supertest'
 import { createHmac } from 'crypto'
 import { createApp } from '../src/app'
 import { FakeLLMProvider } from '../src/llm/fakeProvider'
 import type { DecideOutput } from '../src/llm/types'
 import { _resetSessions } from '../src/llm/aiSessions'
-import { _resetRateLimiter } from '../src/llm/rateLimiter'
+import { _resetStore as _resetRateLimitStore } from '../src/middleware/rateLimit'
 import { logger, type LogLine } from '../src/logger'
+import { listen, type ListenHandle } from './helpers/listen'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -57,21 +58,28 @@ const VALID_PATROL_OUTPUT: DecideOutput = {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/llm/decide', () => {
+  // BOO-507 / BOO-525: bind one HTTP listener per test so supertest reuses it
+  // instead of opening+closing a server per request (which races macOS
+  // ephemeral-port recycling and produces sporadic Parse Errors under the
+  // 60-request burst in the per-player rate-limit test).
   let fake: FakeLLMProvider
+  let handle: ListenHandle
   let request: ReturnType<typeof supertest>
   const logs: LogLine[] = []
 
   beforeEach(() => {
     fake = new FakeLLMProvider()
-    request = supertest(createApp(fake, COOKIE_SECRET, mockPlayerLoader))
+    handle = listen(createApp(fake, COOKIE_SECRET, mockPlayerLoader))
+    request = supertest(handle.server)
     logs.length = 0
     logger.sink = (line) => logs.push(line)
     _resetSessions()
-    _resetRateLimiter()
+    _resetRateLimitStore()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     logger.sink = null
+    await handle.close()
   })
 
   // -------------------------------------------------------------------------
@@ -290,23 +298,40 @@ describe('POST /api/llm/decide', () => {
   // Rate limiting → 429
   // -------------------------------------------------------------------------
 
-  it('429 after exceeding per-player rate limit', async () => {
-    fake.configure({ response: VALID_PATROL_OUTPUT })
+  it(
+    '429 after exceeding per-player rate limit',
+    async () => {
+      fake.configure({ response: VALID_PATROL_OUTPUT })
 
-    // Hit the endpoint 10 times (PLAYER_MAX)
-    for (let i = 0; i < 10; i++) {
-      await request
-        .post('/api/llm/decide')
-        .set('Cookie', makeCookie())
-        .send({ faction: 'elves', snapshot: VALID_SNAPSHOT })
-    }
+      // Pin Date.now() so all 61 requests land inside one fixed 60s window — the
+      // limiter is window-aligned to wall-clock, so without this the loop can
+      // straddle a boundary and reset the counter mid-test. Spy only on Date.now
+      // (not full fake-timers) so supertest's setImmediate-driven scheduling stays real.
+      const fixedNow = new Date('2026-06-15T12:00:00Z').valueOf()
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(fixedNow)
 
-    const res = await request
-      .post('/api/llm/decide')
-      .set('Cookie', makeCookie())
-      .send({ faction: 'elves', snapshot: VALID_SNAPSHOT })
+      try {
+        // identityPerMin = 60 for POST /api/llm/decide (ENDPOINT_PROFILES).
+        // First 60 succeed; 61st trips per-identity limit. ipPerMin = 600, well above.
+        for (let i = 0; i < 60; i++) {
+          const res = await request
+            .post('/api/llm/decide')
+            .set('Cookie', makeCookie())
+            .send({ faction: 'elves', snapshot: VALID_SNAPSHOT })
+          expect(res.status, `request ${i + 1} should not be rate-limited`).not.toBe(429)
+        }
 
-    expect(res.status).toBe(429)
-    expect(res.body.error).toBe('rate_limit_exceeded')
-  })
+        const blocked = await request
+          .post('/api/llm/decide')
+          .set('Cookie', makeCookie())
+          .send({ faction: 'elves', snapshot: VALID_SNAPSHOT })
+
+        expect(blocked.status).toBe(429)
+        expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0)
+      } finally {
+        nowSpy.mockRestore()
+      }
+    },
+    { timeout: 30_000 },
+  )
 })

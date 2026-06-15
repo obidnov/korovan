@@ -48,6 +48,8 @@ export function dropCookie(res: Response): void {
 /**
  * Returns an Express middleware that authenticates via `kr_pid` cookie.
  * Pass-through (no 401) when no cookie is present — endpoint decides auth requirement.
+ * Per-IP rate-limiters mounted downstream depend on this: turning this into a 401 would
+ * silently disable anonymous-traffic IP rate limiting at `/api/saves` and `/api/identity/bootstrap`.
  */
 export function cookieAuth(
   loadPlayer: PlayerLoader,

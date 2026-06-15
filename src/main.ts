@@ -29,7 +29,7 @@ import {
 import { createMainMenu } from './ui/mainMenu'
 import { createHud } from './ui/hud'
 import { createPauseMenu } from './ui/pauseMenu'
-import { hasSave, loadRaw, persistRaw } from './save/storage'
+import { saveGame, loadGame } from './persistence/save'
 import { validateSaveV1, type SaveV1 } from './save/schema'
 import type { ProviderSettings } from './ai/types'
 import { startSceneAudio, type SceneAudioHandle } from './audio/sceneAudio'
@@ -66,23 +66,26 @@ const providerSettingsPanel = createProviderSettingsPanel()
 
 const mainMenu = createMainMenu({
   onNewGame: () => startGame(null),
-  onContinue: () => {
-    const raw = loadRaw()
+  onContinue: () => void (async () => {
+    const record = await loadGame(0)
     let savedState: SaveV1 | null = null
-    if (raw !== null) {
+    if (record !== null) {
       try {
-        savedState = validateSaveV1(raw)
+        savedState = validateSaveV1(record.payload)
       } catch {
         // Corrupt save — start fresh
         console.warn('[korovan] corrupt save data, starting fresh')
       }
     }
     startGame(savedState)
-  },
+  })(),
   onProviderSettings: () => providerSettingsPanel.open(),
 })
 
-mainMenu.setContinueAvailable(hasSave())
+// Probe server for a save so we can enable/disable the "Continue" button
+loadGame(0).then((record) => mainMenu.setContinueAvailable(record !== null)).catch(() => {
+  mainMenu.setContinueAvailable(false)
+})
 mainMenu.show()
 
 // ---------------------------------------------------------------------------
@@ -263,7 +266,9 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   }
 
   const hud = createHud({
-    onSave: () => persistRaw(buildSaveData()),
+    onSave: () => void saveGame(0, buildSaveData(), 1).catch((err: unknown) => {
+      console.warn('[korovan] save failed:', err)
+    }),
     onProviderSettings: () => providerSettingsPanel.open(),
   })
   hud.setHp(playerHp.hp, PLAYER_MAX_HP)
@@ -285,7 +290,9 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
       sceneAudio?.resume()
       canvas.requestPointerLock()
     },
-    onSave: () => persistRaw(buildSaveData()),
+    onSave: () => void saveGame(0, buildSaveData(), 1).catch((err: unknown) => {
+      console.warn('[korovan] save failed:', err)
+    }),
     onProviderSettings: () => providerSettingsPanel.open(),
     onMainMenu: () => {
       void (sceneAudio ? sceneAudio.unload() : Promise.resolve()).then(() => location.reload())

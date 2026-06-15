@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express'
+import rateLimit from 'express-rate-limit'
+import { randomUUID } from 'crypto'
 import { getDb } from '../db'
 
 // ---------------------------------------------------------------------------
@@ -123,4 +125,128 @@ leaderboardRouter.get('/', (req: Request, res: Response): void => {
   cache.set(cacheKey, { payload, expiresAt: now + CACHE_TTL_MS })
 
   res.json(payload)
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/leaderboard — submit run result (BOO-478)
+// ---------------------------------------------------------------------------
+
+const MAX_SCORE = 1_000_000_000 // 1e9 per spec §P1 cap
+const MAX_METADATA_BYTES = 4096
+
+interface ExistingEntryRow {
+  entry_id: string
+  score: number
+}
+
+interface RankRow {
+  rank: number
+}
+
+// Per-identity + per-IP rate limiter (BC-4). Module-level singleton.
+const postLimiter = rateLimit({
+  windowMs: 60_000,
+  max: parseInt(process.env.LEADERBOARD_RATE_LIMIT_MAX ?? '10'),
+  keyGenerator: (req: Request): string => req.player?.id ?? req.ip ?? 'unknown',
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'rate_limit_exceeded' },
+})
+
+leaderboardRouter.post('/', postLimiter, (req: Request, res: Response): void => {
+  if (!req.player) {
+    res.status(401).json({ error: 'authentication_required' })
+    return
+  }
+
+  const body = req.body as {
+    zone?: unknown
+    faction?: unknown
+    score?: unknown
+    run_metadata?: unknown
+  }
+  const { zone, faction, score, run_metadata } = body
+
+  if (typeof zone !== 'string' || !VALID_ZONES.has(zone)) {
+    res.status(400).json({ error: 'invalid_zone', validZones: [...VALID_ZONES] })
+    return
+  }
+
+  if (typeof faction !== 'string' || !VALID_FACTIONS.has(faction)) {
+    res.status(400).json({ error: 'invalid_faction', validFactions: [...VALID_FACTIONS] })
+    return
+  }
+
+  if (
+    typeof score !== 'number' ||
+    !Number.isInteger(score) ||
+    score < 0 ||
+    score > MAX_SCORE
+  ) {
+    res.status(400).json({
+      error: 'invalid_score',
+      detail: `score must be an integer in [0, ${MAX_SCORE}]`,
+    })
+    return
+  }
+
+  let metaJson: string | null = null
+  if (run_metadata !== undefined) {
+    metaJson = JSON.stringify(run_metadata)
+    if (Buffer.byteLength(metaJson, 'utf8') > MAX_METADATA_BYTES) {
+      res.status(400).json({ error: 'run_metadata_too_large', max_bytes: MAX_METADATA_BYTES })
+      return
+    }
+  }
+
+  const now = Date.now()
+  const { id: playerId, nickname } = req.player
+
+  const existing = getDb()
+    .prepare(
+      `SELECT entry_id, score FROM leaderboard_entries
+       WHERE player_id = ? AND zone = ? AND faction = ?`,
+    )
+    .get(playerId, zone, faction) as ExistingEntryRow | undefined
+
+  if (existing && score <= existing.score) {
+    const rankRow = getDb()
+      .prepare(
+        `SELECT COUNT(*) + 1 AS rank FROM leaderboard_entries
+         WHERE zone = ? AND faction = ? AND score > ?`,
+      )
+      .get(zone, faction, existing.score) as RankRow
+    res.status(409).json({ kept: 'existing', rank: rankRow.rank })
+    return
+  }
+
+  let entryId: string
+  if (existing) {
+    entryId = existing.entry_id
+    getDb()
+      .prepare(
+        `UPDATE leaderboard_entries
+         SET score = ?, nickname_snapshot = ?, submitted_at = ?, run_metadata = ?
+         WHERE entry_id = ?`,
+      )
+      .run(score, nickname ?? null, now, metaJson, entryId)
+  } else {
+    entryId = randomUUID()
+    getDb()
+      .prepare(
+        `INSERT INTO leaderboard_entries
+           (entry_id, player_id, zone, faction, score, nickname_snapshot, submitted_at, run_metadata)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(entryId, playerId, zone, faction, score, nickname ?? null, now, metaJson)
+  }
+
+  const rankRow = getDb()
+    .prepare(
+      `SELECT COUNT(*) + 1 AS rank FROM leaderboard_entries
+       WHERE zone = ? AND faction = ? AND score > ?`,
+    )
+    .get(zone, faction, score) as RankRow
+
+  res.status(201).json({ entry_id: entryId, rank: rankRow.rank })
 })

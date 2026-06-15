@@ -4,10 +4,10 @@ import { randomUUID } from 'crypto'
 import { accessSync, constants } from 'node:fs'
 import { logger, redactRecord } from './logger'
 import { identityRouter } from './routes/identity'
-import { leaderboardRouter } from './routes/leaderboard'
 import { cookieAuth } from './middleware/cookieAuth'
-import { savesRouter } from './routes/saves'
 import { getDb } from './db'
+import { leaderboardRouter } from './routes/leaderboard'
+import { savesRouter } from './routes/saves'
 
 const START_MS = Date.now()
 
@@ -83,7 +83,11 @@ app.get('/healthz', (_req: Request, res: Response): void => {
 })
 
 app.use(identityRouter)
-app.use('/api/leaderboard', leaderboardRouter)
+app.use(
+  '/api/leaderboard',
+  cookieAuth(loadPlayer, process.env.COOKIE_SIGNING_SECRET ?? ''),
+  leaderboardRouter,
+)
 app.use(
   '/api/saves',
   cookieAuth(loadPlayer, process.env.COOKIE_SIGNING_SECRET ?? ''),

@@ -172,11 +172,13 @@ CREATE INDEX leaderboard_zone_faction_score
 Query shape: `SELECT … ORDER BY score DESC LIMIT ?` where `zone = ?` AND `faction = ?`.
 
 **FK note on player deletion:** `leaderboard_entries.player_id` references
-`players(player_id)` without `ON DELETE CASCADE`. Historical leaderboard entries
-intentionally survive player account removal. If `players` rows are ever physically
-deleted, `leaderboard_entries.player_id` becomes a dangling reference — acceptable
-for P1 (no player deletion flow). P2+ adds either ON DELETE SET NULL or a soft-delete
-pattern on `players`.
+`players(player_id)` without `ON DELETE CASCADE`. With `PRAGMA foreign_keys = ON`,
+SQLite's default FK action (`NO ACTION`) **blocks** any `DELETE FROM players` that
+has a matching `leaderboard_entries` row — a dangling reference cannot be produced.
+Player deletion is blocked by this FK while any `leaderboard_entries` reference the
+player. No player deletion flow in P1, so this is a non-issue. P2+ adds either
+`ON DELETE SET NULL` (allows deletion; preserves history without the live link) or a
+soft-delete pattern on `players` (preserves the FK link).
 
 ---
 

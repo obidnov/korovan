@@ -57,7 +57,7 @@ export function createApp(
   const app = express()
 
   // Trust the first proxy hop so req.ip reflects X-Forwarded-For (TLS terminated upstream).
-  // Per BOO P0-2 decision.
+  // Per BOO P0-2 decision. Required for per-IP rate-limiting to be spoof-resistant (BOO-509).
   app.set('trust proxy', 1)
 
   app.use((_req: Request, res: Response, next: NextFunction): void => {

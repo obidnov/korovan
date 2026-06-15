@@ -14,6 +14,42 @@ describe('GET /healthz', () => {
     const res = await supertest(app).get('/healthz')
     expect(typeof res.body.version).toBe('string')
   })
+
+  it('includes uptime_ms as a non-negative number', async () => {
+    const res = await supertest(app).get('/healthz')
+    expect(typeof res.body.uptime_ms).toBe('number')
+    expect(res.body.uptime_ms).toBeGreaterThanOrEqual(0)
+  })
+
+  it('returns 200 when DATABASE_URL is not set', async () => {
+    const original = process.env.DATABASE_URL
+    delete process.env.DATABASE_URL
+    try {
+      const res = await supertest(app).get('/healthz')
+      expect(res.status).toBe(200)
+      expect(res.body.ok).toBe(true)
+    } finally {
+      if (original !== undefined) process.env.DATABASE_URL = original
+    }
+  })
+
+  it('returns 503 when DATABASE_URL points to an inaccessible path', async () => {
+    const original = process.env.DATABASE_URL
+    // /dev/null/nonexistent guarantees ENOTDIR / ENOENT on all POSIX systems
+    process.env.DATABASE_URL = '/dev/null/nonexistent-korovan.db'
+    try {
+      const res = await supertest(app).get('/healthz')
+      expect(res.status).toBe(503)
+      expect(res.body.ok).toBe(false)
+      expect(typeof res.body.error).toBe('string')
+    } finally {
+      if (original === undefined) {
+        delete process.env.DATABASE_URL
+      } else {
+        process.env.DATABASE_URL = original
+      }
+    }
+  })
 })
 
 describe('request logging redaction', () => {

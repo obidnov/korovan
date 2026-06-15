@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import express, { type Express } from 'express'
+import express, { type Express, Router } from 'express'
 import request from 'supertest'
 import {
   _resetStore,
@@ -25,6 +25,23 @@ function makeApp(identityPerMin: number, ipPerMin: number, playerId?: string): E
     createRateLimiter({ identityPerMin, ipPerMin }),
     (_req, res) => res.json({ ok: true }),
   )
+  return app
+}
+
+/**
+ * Builds an app with TWO sub-routers, each with the same limiter instance/profile,
+ * mounted at different paths. Used to verify counter isolation (BOO-512).
+ */
+function makeTwoRouterApp(ipPerMin: number): Express {
+  const app = express()
+  app.set('trust proxy', 1)
+  const limiter = createRateLimiter({ identityPerMin: 1000, ipPerMin })
+  const routerA = Router()
+  routerA.post('/', limiter, (_req, res) => res.json({ endpoint: 'A' }))
+  const routerB = Router()
+  routerB.post('/', limiter, (_req, res) => res.json({ endpoint: 'B' }))
+  app.use('/api/leaderboard', routerA)
+  app.use('/api/saves', routerB)
   return app
 }
 
@@ -196,5 +213,66 @@ describe('checkDailyBudget', () => {
     for (const f of factions) {
       expect(spy).toHaveBeenCalledWith('player-4', f, 86_400_000)
     }
+  })
+})
+
+// ─── cross-endpoint counter isolation (BOO-512 regression) ──────────────────
+//
+// Before the fix, req.path inside a sub-router was always "/", so every limiter
+// shared the key "POST /" and counters collided across mounted endpoints.
+// After the fix, originalUrl is used, giving distinct keys per mount path.
+
+describe('createRateLimiter — cross-endpoint counter isolation', () => {
+  beforeEach(_resetStore)
+
+  it('exhausting /api/leaderboard does NOT exhaust /api/saves', async () => {
+    const IP = '10.0.1.1'
+    // ipPerMin=3: POST /api/leaderboard is exhausted after 3 calls.
+    const app = makeTwoRouterApp(3)
+
+    for (let i = 0; i < 3; i++) {
+      const res = await request(app)
+        .post('/api/leaderboard')
+        .set('X-Forwarded-For', IP)
+      expect(res.status).toBe(200)
+    }
+    // /api/leaderboard is now exhausted
+    const blocked = await request(app)
+      .post('/api/leaderboard')
+      .set('X-Forwarded-For', IP)
+    expect(blocked.status).toBe(429)
+
+    // /api/saves must still have its own fresh counter
+    const saved = await request(app)
+      .post('/api/saves')
+      .set('X-Forwarded-For', IP)
+    expect(saved.status).toBe(200)
+  })
+
+  it('exhausting /api/saves does NOT exhaust /api/leaderboard', async () => {
+    const IP = '10.0.1.2'
+    const app = makeTwoRouterApp(2)
+
+    for (let i = 0; i < 2; i++) {
+      await request(app).post('/api/saves').set('X-Forwarded-For', IP)
+    }
+    const blocked = await request(app).post('/api/saves').set('X-Forwarded-For', IP)
+    expect(blocked.status).toBe(429)
+
+    const res = await request(app).post('/api/leaderboard').set('X-Forwarded-For', IP)
+    expect(res.status).toBe(200)
+  })
+
+  it('single-consumer case unchanged: /api/leaderboard still enforces its own limit', async () => {
+    const IP = '10.0.1.3'
+    const app = makeTwoRouterApp(3)
+    for (let i = 0; i < 3; i++) {
+      expect(
+        (await request(app).post('/api/leaderboard').set('X-Forwarded-For', IP)).status,
+      ).toBe(200)
+    }
+    expect(
+      (await request(app).post('/api/leaderboard').set('X-Forwarded-For', IP)).status,
+    ).toBe(429)
   })
 })

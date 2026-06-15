@@ -54,6 +54,8 @@ export interface AgentSessionState {
   sessionId: string
   factionId: FactionId
   ticksSinceStart: number
+  decisionCount: number
+  lastCommand: AgentCommand | null
   /**
    * Provider-specific conversation context (e.g. prior messages for
    * context window maintenance). Must be serialisable to JSON. Max 32 KB

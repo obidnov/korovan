@@ -15,10 +15,17 @@ const ZoneIdSchema = z.enum(['elf-forest', 'palace', 'neutral', 'villain-fort'])
 const FactionIdSchema = z.enum(FACTION_IDS)
 const UnitClassSchema = z.enum(['infantry', 'archer', 'cavalry', 'commander'])
 
+// Explicit object (not z.record) so inferred type is Record<FactionId, number>, not Partial.
+const UnitCountSchema = z.object({
+  elves: z.number().int().nonnegative(),
+  'palace-guard': z.number().int().nonnegative(),
+  villain: z.number().int().nonnegative(),
+})
+
 const ZoneStateSchema = z.object({
   zoneId: ZoneIdSchema,
   controlledBy: FactionIdSchema.nullable(),
-  unitCount: z.record(FactionIdSchema, z.number().int().nonnegative()),
+  unitCount: UnitCountSchema,
   hasCaravan: z.boolean(),
 })
 

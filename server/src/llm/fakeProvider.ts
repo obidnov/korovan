@@ -1,4 +1,4 @@
-import type { DecideInput, DecideOutput, LLMProvider } from './types'
+import type { DecideInput, DecideOutput, LLMProvider, PingResult } from './types'
 import { LLMProviderError, type LLMProviderErrorCode } from './types'
 
 export interface FakeProviderConfig {
@@ -44,5 +44,9 @@ export class FakeLLMProvider implements LLMProvider {
       },
       usage: { promptTokens: 100, completionTokens: 20 },
     }
+  }
+
+  async ping(): Promise<PingResult> {
+    return { ok: true, latencyMs: 0 }
   }
 }

@@ -79,7 +79,7 @@ importers:
         specifier: ^5.0.1
         version: 5.2.1
       zod:
-        specifier: ^3.24.3
+        specifier: ^3.24.4
         version: 3.25.76
     devDependencies:
       '@types/better-sqlite3':

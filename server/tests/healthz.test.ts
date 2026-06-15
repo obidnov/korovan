@@ -1,22 +1,38 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import supertest from 'supertest'
 import { app } from '../src/app'
 import { logger, LogLine } from '../src/logger'
+import { listen, type ListenHandle } from './helpers/listen'
+
+// BOO-507: share ONE listener across all healthz tests at module scope.
+// supertest(app) per-call opens a new port on every request; under singleThread
+// sequential execution the total call volume still races macOS TIME_WAIT port
+// recycling, producing sporadic "socket hang up" (observed in TL AC run: Run-7,
+// Run-19). A single shared listener eliminates all listen/close cycles here.
+let handle: ListenHandle
+
+beforeAll(() => {
+  handle = listen(app)
+})
+
+afterAll(async () => {
+  await handle.close()
+})
 
 describe('GET /healthz', () => {
   it('returns 200 with ok:true', async () => {
-    const res = await supertest(app).get('/healthz')
+    const res = await supertest(handle.server).get('/healthz')
     expect(res.status).toBe(200)
     expect(res.body).toMatchObject({ ok: true })
   })
 
   it('includes version field', async () => {
-    const res = await supertest(app).get('/healthz')
+    const res = await supertest(handle.server).get('/healthz')
     expect(typeof res.body.version).toBe('string')
   })
 
   it('includes uptime_ms as a non-negative number', async () => {
-    const res = await supertest(app).get('/healthz')
+    const res = await supertest(handle.server).get('/healthz')
     expect(typeof res.body.uptime_ms).toBe('number')
     expect(res.body.uptime_ms).toBeGreaterThanOrEqual(0)
   })
@@ -25,7 +41,7 @@ describe('GET /healthz', () => {
     const original = process.env.DATABASE_URL
     delete process.env.DATABASE_URL
     try {
-      const res = await supertest(app).get('/healthz')
+      const res = await supertest(handle.server).get('/healthz')
       expect(res.status).toBe(200)
       expect(res.body.ok).toBe(true)
     } finally {
@@ -38,7 +54,7 @@ describe('GET /healthz', () => {
     // /dev/null/nonexistent guarantees ENOTDIR / ENOENT on all POSIX systems
     process.env.DATABASE_URL = '/dev/null/nonexistent-korovan.db'
     try {
-      const res = await supertest(app).get('/healthz')
+      const res = await supertest(handle.server).get('/healthz')
       expect(res.status).toBe(503)
       expect(res.body.ok).toBe(false)
       expect(typeof res.body.error).toBe('string')
@@ -65,7 +81,7 @@ describe('request logging redaction', () => {
   })
 
   it('redacts Authorization header in request log', async () => {
-    await supertest(app).get('/healthz').set('Authorization', 'Bearer foo')
+    await supertest(handle.server).get('/healthz').set('Authorization', 'Bearer foo')
 
     const reqLog = captured.find((l) => l['msg'] === 'request')
     expect(reqLog).toBeDefined()
@@ -74,7 +90,7 @@ describe('request logging redaction', () => {
   })
 
   it('logs structured request fields', async () => {
-    await supertest(app).get('/healthz')
+    await supertest(handle.server).get('/healthz')
 
     const reqLog = captured.find((l) => l['msg'] === 'request')
     expect(reqLog).toBeDefined()

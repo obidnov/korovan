@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import request from 'supertest'
 import Database from 'better-sqlite3'
 import { readFileSync } from 'fs'
@@ -7,6 +7,7 @@ import { createHmac } from 'crypto'
 import { app } from '../src/app'
 import { setDb, closeDb } from '../src/db'
 import { _resetStore, ENDPOINT_PROFILES } from '../src/middleware/rateLimit'
+import { listen, type ListenHandle } from './helpers/listen'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,6 +50,13 @@ function signCookie(playerId: string): string {
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
+// BOO-507: share one HTTP listener for the whole file so supertest reuses it
+// instead of opening+closing a new server per request (which races macOS
+// ephemeral-port recycling and produces sporadic status mismatches).
+let handle: ListenHandle
+beforeAll(() => { handle = listen(app) })
+afterAll(async () => { await handle.close() })
+
 let db: Database.Database
 
 beforeEach(() => {
@@ -70,7 +78,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid, 'Nomad')
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 9001 })
@@ -86,12 +94,12 @@ describe('POST /api/leaderboard', () => {
     insertPlayer(db, p1)
     insertPlayer(db, p2)
 
-    await request(app)
+    await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(p1))
       .send({ zone: 'forest', faction: 'bandits', score: 9000 })
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(p2))
       .send({ zone: 'forest', faction: 'bandits', score: 5000 })
@@ -104,7 +112,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid, 'Kazakh')
 
-    await request(app)
+    await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 100 })
@@ -119,7 +127,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid, null)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 42 })
@@ -136,7 +144,7 @@ describe('POST /api/leaderboard', () => {
     insertPlayer(db, pid)
     const meta = { kills: 5, time_ms: 120_000 }
 
-    await request(app)
+    await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 100, run_metadata: meta })
@@ -153,14 +161,14 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const first = await request(app)
+    const first = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 1000 })
     expect(first.status).toBe(201)
     const { entry_id } = first.body as { entry_id: string }
 
-    const second = await request(app)
+    const second = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 5000 })
@@ -178,12 +186,12 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    await request(app)
+    await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 9000 })
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 1000 })
@@ -197,12 +205,12 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    await request(app)
+    await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 9000 })
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 9000 })
@@ -214,12 +222,12 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    await request(app)
+    await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 9000 })
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'wolves', score: 100 })
@@ -230,7 +238,7 @@ describe('POST /api/leaderboard', () => {
   // ── Authentication ───────────────────────────────────────────────────────
 
   it('401 — no cookie', async () => {
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .send({ zone: 'forest', faction: 'bandits', score: 100 })
 
@@ -238,7 +246,7 @@ describe('POST /api/leaderboard', () => {
   })
 
   it('401 — tampered cookie is rejected by cookieAuth middleware', async () => {
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', `${COOKIE_NAME}=aaaaaaaa-0001-4000-a000-000000000001.badsig`)
       .send({ zone: 'forest', faction: 'bandits', score: 100 })
@@ -252,7 +260,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'moon', faction: 'bandits', score: 100 })
@@ -265,7 +273,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'robots', score: 100 })
@@ -278,7 +286,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: -1 })
@@ -291,7 +299,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 1_000_000_001 })
@@ -304,7 +312,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 100.5 })
@@ -317,7 +325,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 100, run_metadata: { data: 'x'.repeat(5000) } })
@@ -330,7 +338,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 0 })
@@ -342,7 +350,7 @@ describe('POST /api/leaderboard', () => {
     const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
     insertPlayer(db, pid)
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 1_000_000_000 })
@@ -359,7 +367,7 @@ describe('POST /api/leaderboard', () => {
 
     // Exhaust the per-identity window.
     for (let i = 0; i < identityPerMin; i++) {
-      const r = await request(app)
+      const r = await request(handle.server)
         .post('/api/leaderboard')
         .set('Cookie', signCookie(pid))
         .send({ zone: 'forest', faction: 'bandits', score: i })
@@ -368,7 +376,7 @@ describe('POST /api/leaderboard', () => {
     }
 
     // The next request must be rate-limited.
-    const res = await request(app)
+    const res = await request(handle.server)
       .post('/api/leaderboard')
       .set('Cookie', signCookie(pid))
       .send({ zone: 'forest', faction: 'bandits', score: 999 })

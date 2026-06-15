@@ -17,7 +17,6 @@
     "better-sqlite3": "^12.10.1",
     "cookie-parser": "^1.4.7",
     "express": "^5.0.1",
-    "express-rate-limit": "^7.5.0",
     "zod": "^3.24.3"
   },
   "devDependencies": {

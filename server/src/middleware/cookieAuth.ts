@@ -102,6 +102,7 @@ export function cookieAuth(
           return
         }
         req.player = { id: player.id, nickname: player.nickname }
+        req.playerId = player.id // consumed by rateLimit.ts per-identity check (BOO-482)
         next()
       })
       .catch((err: unknown) => next(err))

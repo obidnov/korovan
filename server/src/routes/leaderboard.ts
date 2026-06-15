@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
-import rateLimit from 'express-rate-limit'
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
+import { createRateLimiter, ENDPOINT_PROFILES } from '../middleware/rateLimit'
 
 // ---------------------------------------------------------------------------
 // Enums (keep in sync with game world definitions)
@@ -143,15 +143,8 @@ interface RankRow {
   rank: number
 }
 
-// Per-identity + per-IP rate limiter (BC-4). Module-level singleton.
-const postLimiter = rateLimit({
-  windowMs: 60_000,
-  max: parseInt(process.env.LEADERBOARD_RATE_LIMIT_MAX ?? '10'),
-  keyGenerator: (req: Request): string => req.player?.id ?? req.ip ?? 'unknown',
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'rate_limit_exceeded' },
-})
+// Per-identity + per-IP rate limiter using canonical BOO-482 middleware.
+const postLimiter = createRateLimiter(ENDPOINT_PROFILES['POST /api/leaderboard'])
 
 leaderboardRouter.post('/', postLimiter, (req: Request, res: Response): void => {
   if (!req.player) {

@@ -6,6 +6,7 @@ import { join } from 'path'
 import { createHmac } from 'crypto'
 import { app } from '../src/app'
 import { setDb, closeDb } from '../src/db'
+import { _resetStore, ENDPOINT_PROFILES } from '../src/middleware/rateLimit'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,6 +54,7 @@ let db: Database.Database
 beforeEach(() => {
   db = buildInMemoryDb()
   setDb(db)
+  _resetStore() // clear rate-limit counters between tests (BOO-482 in-memory store)
 })
 
 afterEach(() => {
@@ -346,5 +348,34 @@ describe('POST /api/leaderboard', () => {
       .send({ zone: 'forest', faction: 'bandits', score: 1_000_000_000 })
 
     expect(res.status).toBe(201)
+  })
+
+  // ── Rate limiting ────────────────────────────────────────────────────────
+
+  it('429 — identity rate limit after identityPerMin requests', async () => {
+    const pid = 'aaaaaaaa-0001-4000-a000-000000000001'
+    insertPlayer(db, pid)
+    const { identityPerMin } = ENDPOINT_PROFILES['POST /api/leaderboard']
+
+    // Exhaust the per-identity window.
+    for (let i = 0; i < identityPerMin; i++) {
+      const r = await request(app)
+        .post('/api/leaderboard')
+        .set('Cookie', signCookie(pid))
+        .send({ zone: 'forest', faction: 'bandits', score: i })
+      // First identityPerMin requests must succeed (201 or 409 keep-best).
+      expect([201, 409]).toContain(r.status)
+    }
+
+    // The next request must be rate-limited.
+    const res = await request(app)
+      .post('/api/leaderboard')
+      .set('Cookie', signCookie(pid))
+      .send({ zone: 'forest', faction: 'bandits', score: 999 })
+
+    expect(res.status).toBe(429)
+    expect(res.body.error).toBe('Too Many Requests')
+    expect(typeof res.body.retryAfter).toBe('number')
+    expect(res.headers['retry-after']).toBeDefined()
   })
 })

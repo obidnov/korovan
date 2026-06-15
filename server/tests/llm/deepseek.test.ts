@@ -223,6 +223,96 @@ describe('decide() — schema validation errors', () => {
   })
 })
 
+// ─── idle.reason sanitization at schema-parse time (BOO-510) ──────────────────
+
+describe('decide() — idle.reason sanitization via schema transform', () => {
+  it('strips Unicode bidi override (U+202E) from idle.reason', async () => {
+    server.use(
+      http.post(ENDPOINT, () =>
+        HttpResponse.json(
+          makeToolCallResponse(JSON.stringify({ kind: 'idle', reason: 'normal‮reverse' })),
+        ),
+      ),
+    )
+
+    const provider = createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: BASE_URL })
+    const output = await provider.decide(DECIDE_INPUT)
+    const idle = output.command as { kind: 'idle'; reason: string }
+
+    expect(idle.kind).toBe('idle')
+    expect(idle.reason).not.toContain('‮')
+    expect(idle.reason).toBe('normalreverse')
+  })
+
+  it('strips zero-width joiner (U+200D) from idle.reason', async () => {
+    server.use(
+      http.post(ENDPOINT, () =>
+        HttpResponse.json(
+          makeToolCallResponse(JSON.stringify({ kind: 'idle', reason: 'safe‍beacon' })),
+        ),
+      ),
+    )
+
+    const provider = createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: BASE_URL })
+    const output = await provider.decide(DECIDE_INPUT)
+    const idle = output.command as { kind: 'idle'; reason: string }
+
+    expect(idle.reason).not.toContain('‍')
+    // Zero-width joiner is not in the allowlist; sanitizeUserString replaces
+    // it with a space, so 'safe‍beacon' collapses to 'safe beacon'.
+    expect(idle.reason).toBe('safe beacon')
+  })
+
+  it('preserves clean idle.reason unchanged (no false positives)', async () => {
+    server.use(
+      http.post(ENDPOINT, () =>
+        HttpResponse.json(
+          makeToolCallResponse(JSON.stringify({ kind: 'idle', reason: 'no threats detected' })),
+        ),
+      ),
+    )
+
+    const provider = createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: BASE_URL })
+    const output = await provider.decide(DECIDE_INPUT)
+    const idle = output.command as { kind: 'idle'; reason: string }
+
+    expect(idle.reason).toBe('no threats detected')
+  })
+
+  it('strips ASCII control chars from idle.reason (preserves existing behavior)', async () => {
+    server.use(
+      http.post(ENDPOINT, () =>
+        HttpResponse.json(
+          makeToolCallResponse(JSON.stringify({ kind: 'idle', reason: 'with\x00null\x07bell' })),
+        ),
+      ),
+    )
+
+    const provider = createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: BASE_URL })
+    const output = await provider.decide(DECIDE_INPUT)
+    const idle = output.command as { kind: 'idle'; reason: string }
+
+    // eslint-disable-next-line no-control-regex -- assertion deliberately targets stripped C0 controls
+    expect(idle.reason).not.toMatch(/[\x00-\x08\x0B\x0C\x0E-\x1F]/)
+    expect(idle.reason).toBe('withnullbell')
+  })
+
+  it('still rejects idle reason longer than 128 chars (max check before transform)', async () => {
+    server.use(
+      http.post(ENDPOINT, () =>
+        HttpResponse.json(
+          makeToolCallResponse(JSON.stringify({ kind: 'idle', reason: 'x'.repeat(129) })),
+        ),
+      ),
+    )
+
+    const provider = createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: BASE_URL })
+    await expect(provider.decide(DECIDE_INPUT)).rejects.toMatchObject({
+      code: 'schema-invalid',
+    })
+  })
+})
+
 // ─── Rate limiting (HTTP 429) ─────────────────────────────────────────────────
 
 describe('decide() — rate-limited (429)', () => {

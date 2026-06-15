@@ -1,7 +1,15 @@
 import { z } from 'zod'
+import { sanitizeIdleReason } from './sanitize.js'
 
 // Zod schema for AgentCommand — mirrors the TS discriminated union in types.ts.
 // Used by deepseek.ts to validate tool-call arguments before they leave the adapter.
+//
+// idle.reason runs sanitizeIdleReason (BOO-481) as a parse-time transform so the
+// deepseek hot path strips Unicode bidi controls (U+202A-U+202E, U+2066-U+2069),
+// zero-width chars, C1 controls, and template/jailbreak patterns before the value
+// reaches game logic or echo-path persistence (BOO-405 b-2 cross-tick recursion).
+// Defense-in-depth: validate.ts AgentCommandSchema applies the same transform on
+// the EP-3 path; both schemas must stay in sync until consolidated (BOO-510 note).
 export const AgentCommandSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('patrol'),
@@ -19,7 +27,7 @@ export const AgentCommandSchema = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('idle'),
-    reason: z.string().max(128),
+    reason: z.string().max(128).transform(sanitizeIdleReason),
   }),
 ])
 

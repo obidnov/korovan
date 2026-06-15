@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
-import { readFileSync } from 'fs'
-import { join } from 'path'
 import {
   createAIStateStore,
   AIStateTooLargeError,

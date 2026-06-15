@@ -1,10 +1,18 @@
 import express, { Request, Response, NextFunction } from 'express'
+import cookieParser from 'cookie-parser'
 import { randomUUID } from 'crypto'
 import { accessSync, constants } from 'node:fs'
 import { logger, redactRecord } from './logger'
 import { leaderboardRouter } from './routes/leaderboard'
+import { cookieAuth } from './middleware/cookieAuth'
+import { savesRouter } from './routes/saves'
+import { getDb } from './db'
 
 const START_MS = Date.now()
+
+// H6: set limit BEFORE express.json parses into memory.
+// 4× per-payload cap covers wrapper fields; route still enforces the 64 KB payload limit.
+const SAVE_MAX_BYTES = parseInt(process.env.SAVE_MAX_BYTES ?? String(64 * 1024), 10)
 
 function probeDatabase(): { ok: boolean; error?: string } {
   const url = process.env.DATABASE_URL
@@ -17,6 +25,15 @@ function probeDatabase(): { ok: boolean; error?: string } {
   } catch (err: unknown) {
     return { ok: false, error: `DB unreachable: ${String(err)}` }
   }
+}
+
+// PlayerLoader for BOO-470 cookieAuth: reads from the migrated `players` table.
+// Lazy: getDb() is not called until the first authed request.
+function loadPlayer(playerId: string): Promise<{ id: string; nickname: string | null } | null> {
+  const row = getDb()
+    .prepare('SELECT player_id, nickname FROM players WHERE player_id = ?')
+    .get(playerId) as { player_id: string; nickname: string | null } | undefined
+  return Promise.resolve(row ? { id: row.player_id, nickname: row.nickname } : null)
 }
 
 const app = express()
@@ -48,7 +65,8 @@ app.use((_req: Request, res: Response, next: NextFunction): void => {
   next()
 })
 
-app.use(express.json())
+app.use(express.json({ limit: SAVE_MAX_BYTES * 4 }))
+app.use(cookieParser())
 
 app.get('/healthz', (_req: Request, res: Response): void => {
   const db = probeDatabase()
@@ -64,5 +82,10 @@ app.get('/healthz', (_req: Request, res: Response): void => {
 })
 
 app.use('/api/leaderboard', leaderboardRouter)
+app.use(
+  '/api/saves',
+  cookieAuth(loadPlayer, process.env.COOKIE_SIGNING_SECRET ?? ''),
+  savesRouter,
+)
 
 export { app }

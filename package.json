@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:client": "vite",
+    "dev:server": "pnpm --filter server dev",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

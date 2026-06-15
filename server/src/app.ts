@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express'
 import { randomUUID } from 'crypto'
 import { logger, redactRecord } from './logger'
+import { leaderboardRouter } from './routes/leaderboard'
 
 const app = express()
 
@@ -32,5 +33,7 @@ app.use(express.json())
 app.get('/healthz', (_req: Request, res: Response): void => {
   res.json({ ok: true, version: process.env.GIT_SHA ?? 'dev' })
 })
+
+app.use('/api/leaderboard', leaderboardRouter)
 
 export { app }

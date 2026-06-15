@@ -14,6 +14,7 @@
 
 import { z } from 'zod'
 import type { AgentCommand } from './types'
+import { sanitizeIdleReason } from './sanitize'
 
 // ---------------------------------------------------------------------------
 // Per-variant schemas — all .strict() to reject unknown fields
@@ -42,11 +43,15 @@ const RetreatSchema = z
   })
   .strict()
 
-// reason cap mirrors AgentCommand comment in types.ts ("capped at 128 chars")
+// reason cap mirrors AgentCommand comment in types.ts ("capped at 128 chars").
+// .transform(sanitizeIdleReason) sanitizes the LLM-generated reason string at
+// parse time, closing the prompt-recursion echo path (BOO-405 b-2): the value
+// from tick N is re-fed into the prompt at tick N+1, so sanitization must be
+// guaranteed by the schema itself -- not left as a caller responsibility.
 const IdleSchema = z
   .object({
     kind: z.literal('idle'),
-    reason: z.string().max(128),
+    reason: z.string().max(128).transform(sanitizeIdleReason),
   })
   .strict()
 

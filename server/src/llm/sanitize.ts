@@ -98,30 +98,35 @@ const TEMPLATE_SUBS: readonly Sub[] = [
  * More-specific patterns come before their prefix to ensure the more-specific
  * replacement fires first if different placeholders are ever introduced.
  *
+ * Multi-word patterns use \s+ (not literal space) so double-space, tab,
+ * NBSP (U+00A0), and other Unicode whitespace do not bypass detection.
+ * Colon-terminated keywords use \s* before ':' to block "system :" bypass.
+ * JavaScript's \s matches U+00A0 and other Unicode whitespace even without /u.
+ *
  * Ownership: CSO + BD jointly own updates.
- * Last updated: 2026-06-15 per BOO-495 (B5 hardening -- expanded list).
+ * Last updated: 2026-06-15 per BOO-481 CSO rejection (whitespace-bypass fix).
  */
 export const JAILBREAK_PREFIXES: readonly RegExp[] = [
   // Instruction-override openers
-  /ignore previous/gi,
-  /ignore above/gi,
-  /disregard/gi,           // catches bare "disregard" + "disregard all"
-  /new instructions/gi,
+  /ignore\s+previous/gi,
+  /ignore\s+above/gi,
+  /disregard/gi,                    // catches bare "disregard" + "disregard all"
+  /new\s+instructions/gi,
   /forget/gi,
   // Role-play / persona hijacking (BOO-495 B5)
-  /you are now/gi,
-  /act as/gi,
-  /roleplay as/gi,
-  /your new role/gi,
-  /from now on/gi,
-  /as an ai/gi,
-  /respond with/gi,
-  /let'?s play/gi,         // "let's play" and "lets play"
+  /you\s+are\s+now/gi,
+  /act\s+as/gi,
+  /roleplay\s+as/gi,
+  /your\s+new\s+role/gi,
+  /from\s+now\s+on/gi,
+  /as\s+an\s+ai/gi,
+  /respond\s+with/gi,
+  /let'?s\s+play/gi,               // "let's play" and "lets play"
   // Prompt-structure injection
-  /system:/gi,
-  /###\s*instruction:/gi,  // must precede bare ### so more-specific fires first
+  /system\s*:/gi,                   // \s* blocks "system :" space-before-colon bypass
+  /###\s*instruction\s*:/gi,        // must precede bare ### so more-specific fires first
   /###/g,
-  /assistant:/gi,
+  /assistant\s*:/gi,                // \s* blocks "assistant :" space-before-colon bypass
   // Model-specific special tokens (BOO-495 B5)
   /<\|im_start\|>/gi,
   /<\|system\|>/gi,

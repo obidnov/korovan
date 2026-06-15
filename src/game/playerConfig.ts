@@ -2,6 +2,8 @@
 export const playerConfig = {
   // Movement
   moveSpeed: 6, // m/s on ground
+  /** Minimum horizontal speed (m/s) considered as "moving" — used to gate footsteps audio. */
+  movingSpeedThreshold: 0.5,
 
   // Jump
   jumpImpulse: 7, // m/s initial vertical velocity

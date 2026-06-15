@@ -21,6 +21,10 @@ function probeDatabase(): { ok: boolean; error?: string } {
 
 const app = express()
 
+// Trust the first proxy hop so req.ip reflects X-Forwarded-For (TLS terminated upstream).
+// Per BOO P0-2 decision.
+app.set('trust proxy', 1)
+
 app.use((_req: Request, res: Response, next: NextFunction): void => {
   const reqId = randomUUID()
   const start = Date.now()

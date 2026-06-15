@@ -8,7 +8,7 @@
  * First-time visit (no cookie) → creates new player.
  */
 
-import { randomUUID, createHmac } from 'crypto'
+import { randomUUID, createHmac, timingSafeEqual } from 'crypto'
 import type { Router, Request, Response } from 'express'
 
 // ---------------------------------------------------------------------------
@@ -71,7 +71,6 @@ function validateHmac(raw: string, secret: string): string | null {
   const sig = raw.slice(UUID_LEN + 1)
   const expected = createHmac('sha256', secret).update(playerId).digest('hex')
   try {
-    const { timingSafeEqual } = require('crypto') as typeof import('crypto')
     const a = Buffer.from(sig, 'hex')
     const b = Buffer.from(expected, 'hex')
     if (a.length === b.length && timingSafeEqual(a, b)) return playerId

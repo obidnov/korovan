@@ -1,0 +1,19 @@
+# Source directories excluded from Docker build context.
+# Keep this file — Docker sends the build context to the daemon;
+# excluding large directories speeds up every `fly deploy`.
+
+node_modules/
+server/node_modules/
+server/dist/
+dist/
+.git/
+.github/
+*.log
+.env
+.env.local
+.env.local.example
+src/
+public/
+index.html
+vite.config.ts
+tsconfig.json

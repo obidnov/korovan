@@ -10,7 +10,7 @@ fly-setup:
 	fly volumes create korovan_data --region $(FLY_REGION) --size 1 --app $(FLY_APP)
 	@echo ""
 	@echo "==> Now set secrets (substituting real values):"
-	@echo "    fly secrets set DATABASE_PATH=/data/korovan.db AI_API_KEY=<key> SESSION_SECRET=<secret>"
+	@echo "    fly secrets set DB_PATH=/data/korovan.db DEEPSEEK_API_KEY=<key> SESSION_SECRET=<secret>"
 	@echo ""
 	@echo "==> Then deploy:"
 	@echo "    make fly-deploy"

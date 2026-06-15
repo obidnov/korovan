@@ -79,7 +79,9 @@ export function _resetStore(): void {
  */
 export function createRateLimiter(profile: RateLimitProfile): RequestHandler {
   return (req: Request, res: Response, next): void => {
-    const path = `${req.method} ${req.path}`
+    // req.path inside a sub-router is always "/" — use originalUrl (stripped of query
+    // string) so counters stay isolated when the same limiter is wired to multiple mounts.
+    const path = `${req.method} ${req.originalUrl.split('?')[0]}`
     const now = Date.now()
 
     // Per-IP check (always applies)

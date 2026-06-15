@@ -29,9 +29,24 @@ import {
 import { createMainMenu } from './ui/mainMenu'
 import { createHud } from './ui/hud'
 import { createPauseMenu } from './ui/pauseMenu'
+import { showToast } from './ui/toast'
 import { hasSave, loadRaw, persistRaw } from './save/storage'
 import { validateSaveV1, type SaveV1 } from './save/schema'
 import type { ProviderSettings } from './ai/types'
+import { submitScore, ApiError } from './api/leaderboard'
+
+// ---------------------------------------------------------------------------
+// Leaderboard constants
+// ---------------------------------------------------------------------------
+
+const LB_ZONE = 'forest'
+const LB_FACTION = 'player'
+
+/** Score = weighted loot sum: gold×10, wood×5, ironOre×15. */
+function computeScore(items: ReadonlyArray<{ id: string; qty: number }>): number {
+  const weights: Record<string, number> = { gold: 10, wood: 5, ironOre: 15 }
+  return items.reduce((acc, { id, qty }) => acc + (weights[id] ?? 1) * qty, 0)
+}
 
 // ---------------------------------------------------------------------------
 // Combat constants
@@ -63,23 +78,26 @@ const providerSettingsPanel = createProviderSettingsPanel()
 // Main menu — shown immediately before game loads
 // ---------------------------------------------------------------------------
 
-const mainMenu = createMainMenu({
-  onNewGame: () => startGame(null),
-  onContinue: () => {
-    const raw = loadRaw()
-    let savedState: SaveV1 | null = null
-    if (raw !== null) {
-      try {
-        savedState = validateSaveV1(raw)
-      } catch {
-        // Corrupt save — start fresh
-        console.warn('[korovan] corrupt save data, starting fresh')
+const mainMenu = createMainMenu(
+  {
+    onNewGame: () => startGame(null),
+    onContinue: () => {
+      const raw = loadRaw()
+      let savedState: SaveV1 | null = null
+      if (raw !== null) {
+        try {
+          savedState = validateSaveV1(raw)
+        } catch {
+          // Corrupt save — start fresh
+          console.warn('[korovan] corrupt save data, starting fresh')
+        }
       }
-    }
-    startGame(savedState)
+      startGame(savedState)
+    },
+    onProviderSettings: () => providerSettingsPanel.open(),
   },
-  onProviderSettings: () => providerSettingsPanel.open(),
-})
+  { zone: LB_ZONE, faction: LB_FACTION },
+)
 
 mainMenu.setContinueAvailable(hasSave())
 mainMenu.show()
@@ -139,6 +157,26 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   playerHp.onDeath(() => {
     if (isRespawning) return
     isRespawning = true
+
+    // Submit run score non-blockingly (must not stall the death screen)
+    const runScore = computeScore(inventory.list())
+    submitScore({ zone: LB_ZONE, faction: LB_FACTION, score: runScore })
+      .then(({ rank }) => {
+        showToast(`Submitted! Rank #${rank}.`, 'success')
+        mainMenu.refreshLeaderboard()
+      })
+      .catch((err: unknown) => {
+        const status = err instanceof ApiError ? err.status : 0
+        if (status === 429) {
+          showToast("Couldn't submit — keep playing!", 'error')
+        } else if (status === 0) {
+          // Network failure — silent; toast would only alarm the player
+          console.warn('[korovan] leaderboard submit failed (network)')
+        } else {
+          showToast("Couldn't submit — keep playing!", 'error')
+        }
+      })
+
     deathScreen.show(() => {
       playerHp.reset()
       pendingRespawn = true

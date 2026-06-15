@@ -32,6 +32,7 @@ import { createPauseMenu } from './ui/pauseMenu'
 import { hasSave, loadRaw, persistRaw } from './save/storage'
 import { validateSaveV1, type SaveV1 } from './save/schema'
 import type { ProviderSettings } from './ai/types'
+import { startSceneAudio, type SceneAudioHandle } from './audio/sceneAudio'
 
 // ---------------------------------------------------------------------------
 // Combat constants
@@ -136,13 +137,18 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   let pendingRespawn = false
   let isRespawning = false
 
+  // sceneAudio is assigned after loop.start(); closures below use it safely via ?
+  let sceneAudio: SceneAudioHandle | null = null
+
   playerHp.onDeath(() => {
     if (isRespawning) return
     isRespawning = true
+    sceneAudio?.pause()
     deathScreen.show(() => {
       playerHp.reset()
       pendingRespawn = true
       isRespawning = false
+      sceneAudio?.resume()
     })
   })
 
@@ -276,11 +282,14 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   const pauseMenu = createPauseMenu({
     onResume: () => {
       paused = false
+      sceneAudio?.resume()
       canvas.requestPointerLock()
     },
     onSave: () => persistRaw(buildSaveData()),
     onProviderSettings: () => providerSettingsPanel.open(),
-    onMainMenu: () => location.reload(),
+    onMainMenu: () => {
+      void (sceneAudio ? sceneAudio.unload() : Promise.resolve()).then(() => location.reload())
+    },
   })
 
   // -------------------------------------------------------------------------
@@ -316,6 +325,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     // Pointer lock released (Esc during play) → open pause menu
     if (!locked && !pauseMenu.isOpen) {
       paused = true
+      sceneAudio?.pause()
       pauseMenu.open()
     }
   })
@@ -497,4 +507,8 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   })
 
   loop.start()
+
+  // Forest ambient — starts after loop is running; wired to all scene lifecycle events.
+  sceneAudio = startSceneAudio()
+  window.addEventListener('beforeunload', () => { void sceneAudio?.unload() }, { once: true })
 }

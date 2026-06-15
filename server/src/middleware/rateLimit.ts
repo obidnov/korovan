@@ -79,7 +79,9 @@ export function _resetStore(): void {
  */
 export function createRateLimiter(profile: RateLimitProfile): RequestHandler {
   return (req: Request, res: Response, next): void => {
-    const path = `${req.method} ${req.path}`
+    // originalUrl preserves the full mount prefix; req.path is stripped by app.use()
+    // which causes key collisions across endpoints all mounted with app.use('/api/xxx').
+    const path = `${req.method} ${req.originalUrl.split('?')[0]}`
     const now = Date.now()
 
     // Per-IP check (always applies)

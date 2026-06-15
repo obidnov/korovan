@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import request from 'supertest'
 import Database from 'better-sqlite3'
 import { readFileSync } from 'fs'
@@ -6,6 +6,7 @@ import { join } from 'path'
 import { app } from '../src/app'
 import { setDb, closeDb } from '../src/db'
 import { _resetQueryCount, _queryCount, _clearCache } from '../src/routes/leaderboard'
+import { listen, type ListenHandle } from './helpers/listen'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,6 +60,13 @@ function insertEntry(
 // Test setup
 // ---------------------------------------------------------------------------
 
+// BOO-507: share one HTTP listener for the whole file so supertest reuses it
+// instead of opening+closing a new server per request (which races macOS
+// ephemeral-port recycling and produces sporadic status mismatches).
+let handle: ListenHandle
+beforeAll(() => { handle = listen(app) })
+afterAll(async () => { await handle.close() })
+
 let db: Database.Database
 
 beforeEach(() => {
@@ -78,7 +86,7 @@ afterEach(() => {
 
 describe('GET /api/leaderboard', () => {
   it('returns 200 with empty entries when leaderboard is empty', async () => {
-    const res = await request(app)
+    const res = await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits')
       .expect(200)
 
@@ -95,7 +103,7 @@ describe('GET /api/leaderboard', () => {
     insertEntry(db, { entryId: 'e1', playerId: 'player-aaa', zone: 'forest', faction: 'bandits', score: 500, nicknameSnapshot: 'Hero' })
     insertEntry(db, { entryId: 'e2', playerId: 'player-bbb', zone: 'forest', faction: 'bandits', score: 9001, nicknameSnapshot: 'Legend' })
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits')
       .expect(200)
 
@@ -117,7 +125,7 @@ describe('GET /api/leaderboard', () => {
     insertPlayer(db, playerId)
     insertEntry(db, { entryId: 'e3', playerId, zone: 'forest', faction: 'bandits', score: 100 })
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits')
       .expect(200)
 
@@ -129,7 +137,7 @@ describe('GET /api/leaderboard', () => {
   // -------------------------------------------------------------------------
 
   it('returns 400 for an invalid zone', async () => {
-    const res = await request(app)
+    const res = await request(handle.server)
       .get('/api/leaderboard?zone=atlantis&faction=bandits')
       .expect(400)
 
@@ -137,7 +145,7 @@ describe('GET /api/leaderboard', () => {
   })
 
   it('returns 400 when zone param is missing', async () => {
-    await request(app)
+    await request(handle.server)
       .get('/api/leaderboard?faction=bandits')
       .expect(400)
   })
@@ -147,7 +155,7 @@ describe('GET /api/leaderboard', () => {
   // -------------------------------------------------------------------------
 
   it('returns 400 when limit > 100', async () => {
-    const res = await request(app)
+    const res = await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits&limit=101')
       .expect(400)
 
@@ -155,13 +163,13 @@ describe('GET /api/leaderboard', () => {
   })
 
   it('returns 400 for non-integer limit', async () => {
-    await request(app)
+    await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits&limit=abc')
       .expect(400)
   })
 
   it('accepts limit=100 (boundary)', async () => {
-    await request(app)
+    await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits&limit=100')
       .expect(200)
   })
@@ -174,13 +182,13 @@ describe('GET /api/leaderboard', () => {
   it('serves second identical request from cache without hitting the DB', async () => {
     expect(_queryCount).toBe(0)
 
-    await request(app)
+    await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits')
       .expect(200)
 
     expect(_queryCount).toBe(1)
 
-    await request(app)
+    await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits')
       .expect(200)
 
@@ -189,10 +197,10 @@ describe('GET /api/leaderboard', () => {
   })
 
   it('uses separate cache entries for different zone/faction/limit combinations', async () => {
-    await request(app).get('/api/leaderboard?zone=forest&faction=bandits').expect(200)
-    await request(app).get('/api/leaderboard?zone=ruins&faction=bandits').expect(200)
-    await request(app).get('/api/leaderboard?zone=forest&faction=wolves').expect(200)
-    await request(app).get('/api/leaderboard?zone=forest&faction=bandits&limit=5').expect(200)
+    await request(handle.server).get('/api/leaderboard?zone=forest&faction=bandits').expect(200)
+    await request(handle.server).get('/api/leaderboard?zone=ruins&faction=bandits').expect(200)
+    await request(handle.server).get('/api/leaderboard?zone=forest&faction=wolves').expect(200)
+    await request(handle.server).get('/api/leaderboard?zone=forest&faction=bandits&limit=5').expect(200)
 
     expect(_queryCount).toBe(4)
   })
@@ -202,7 +210,7 @@ describe('GET /api/leaderboard', () => {
   // -------------------------------------------------------------------------
 
   it('returns 400 for an invalid faction', async () => {
-    const res = await request(app)
+    const res = await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=unicorns')
       .expect(400)
 
@@ -218,7 +226,7 @@ describe('GET /api/leaderboard', () => {
     insertPlayer(db, 'p-ts')
     insertEntry(db, { entryId: 'e-ts', playerId: 'p-ts', zone: 'forest', faction: 'bandits', score: 1, submittedAt: ts })
 
-    const res = await request(app)
+    const res = await request(handle.server)
       .get('/api/leaderboard?zone=forest&faction=bandits')
       .expect(200)
 

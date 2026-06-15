@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { createHmac } from 'crypto'
 import supertest from 'supertest'
 import { readFileSync } from 'fs'
@@ -6,6 +6,7 @@ import { join } from 'path'
 import Database from 'better-sqlite3'
 import { app } from '../src/app'
 import { setDb, closeDb } from '../src/db'
+import { listen, type ListenHandle } from './helpers/listen'
 
 // TEST_SECRET must match the value set in vitest.config.ts COOKIE_SIGNING_SECRET env.
 const TEST_SECRET = 'test-signing-secret-min-32-bytes!!'
@@ -32,6 +33,13 @@ function seedPlayer(db: Database.Database, playerId: string): void {
   ).run(playerId, null, now, now, 1)
 }
 
+// BOO-507: share one HTTP listener for the whole file so supertest reuses it
+// instead of opening+closing a new server per request (which races macOS
+// ephemeral-port recycling and produces sporadic status mismatches).
+let handle: ListenHandle
+beforeAll(() => { handle = listen(app) })
+afterAll(async () => { await handle.close() })
+
 describe('POST /api/saves', () => {
   const PLAYER_ID = 'a0000000-0000-4000-8000-000000000001'
   let db: Database.Database
@@ -47,7 +55,7 @@ describe('POST /api/saves', () => {
   })
 
   it('new save → 200 + row in saves', async () => {
-    const res = await supertest(app)
+    const res = await supertest(handle.server)
       .post('/api/saves')
       .set('Cookie', makeCookie(PLAYER_ID))
       .send({ slot: 0, version: 1, payload: { hp: 100, position: [0, 0, 0] } })
@@ -68,14 +76,14 @@ describe('POST /api/saves', () => {
   it('update existing slot → 200; single row, updated_at increases', async () => {
     const before = Date.now()
 
-    const r1 = await supertest(app)
+    const r1 = await supertest(handle.server)
       .post('/api/saves')
       .set('Cookie', makeCookie(PLAYER_ID))
       .send({ slot: 0, version: 1, payload: { hp: 100 } })
     expect(r1.status).toBe(200)
     const saveId1 = r1.body.save_id as string
 
-    const r2 = await supertest(app)
+    const r2 = await supertest(handle.server)
       .post('/api/saves')
       .set('Cookie', makeCookie(PLAYER_ID))
       .send({ slot: 0, version: 2, payload: { hp: 80 } })
@@ -98,7 +106,7 @@ describe('POST /api/saves', () => {
   it('payload > 64 KB → 413', async () => {
     const bigPayload = { data: 'x'.repeat(65 * 1024) }
 
-    const res = await supertest(app)
+    const res = await supertest(handle.server)
       .post('/api/saves')
       .set('Cookie', makeCookie(PLAYER_ID))
       .send({ slot: 0, version: 1, payload: bigPayload })
@@ -107,12 +115,12 @@ describe('POST /api/saves', () => {
   })
 
   it('older version than stored → 409', async () => {
-    await supertest(app)
+    await supertest(handle.server)
       .post('/api/saves')
       .set('Cookie', makeCookie(PLAYER_ID))
       .send({ slot: 0, version: 5, payload: { hp: 100 } })
 
-    const res = await supertest(app)
+    const res = await supertest(handle.server)
       .post('/api/saves')
       .set('Cookie', makeCookie(PLAYER_ID))
       .send({ slot: 0, version: 3, payload: { hp: 50 } })
@@ -122,7 +130,7 @@ describe('POST /api/saves', () => {
   })
 
   it('missing cookie → 401', async () => {
-    const res = await supertest(app)
+    const res = await supertest(handle.server)
       .post('/api/saves')
       .send({ slot: 0, version: 1, payload: { hp: 100 } })
 
@@ -145,7 +153,7 @@ describe('GET /api/saves/me', () => {
   })
 
   it('player with no save → 204', async () => {
-    const res = await supertest(app)
+    const res = await supertest(handle.server)
       .get('/api/saves/me')
       .set('Cookie', makeCookie(PLAYER_ID))
 
@@ -158,7 +166,7 @@ describe('GET /api/saves/me', () => {
       'INSERT INTO saves (save_id, player_id, slot, version, payload, updated_at, client_clock_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run('save-0001', PLAYER_ID, 0, 3, JSON.stringify({ hp: 75 }), 1000, 999)
 
-    const res = await supertest(app)
+    const res = await supertest(handle.server)
       .get('/api/saves/me')
       .set('Cookie', makeCookie(PLAYER_ID))
 
@@ -177,7 +185,7 @@ describe('GET /api/saves/me', () => {
       'INSERT INTO saves (save_id, player_id, slot, version, payload, updated_at, client_clock_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ).run('save-0002', PLAYER_ID, 0, 1, JSON.stringify({ hp: 100 }), 1000, 999)
 
-    const res = await supertest(app)
+    const res = await supertest(handle.server)
       .get('/api/saves/me?slot=1')
       .set('Cookie', makeCookie(PLAYER_ID))
 
@@ -185,12 +193,12 @@ describe('GET /api/saves/me', () => {
   })
 
   it('missing cookie → 401', async () => {
-    const res = await supertest(app).get('/api/saves/me')
+    const res = await supertest(handle.server).get('/api/saves/me')
     expect(res.status).toBe(401)
   })
 
   it('Cache-Control: no-store header set', async () => {
-    const res = await supertest(app)
+    const res = await supertest(handle.server)
       .get('/api/saves/me')
       .set('Cookie', makeCookie(PLAYER_ID))
 

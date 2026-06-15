@@ -9,6 +9,7 @@ import {
   retryAfterSeconds,
   type DailyBudgetStore,
 } from '../src/middleware/rateLimit'
+import { listen } from './helpers/listen'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -93,18 +94,36 @@ describe('createRateLimiter — per-identity limit', () => {
   beforeEach(_resetStore)
 
   it('burst 70 calls → 60 succeed, 10 get 429', async () => {
-    const app = makeApp(60, 600, 'player-001')
-    let ok = 0
-    let tooMany = 0
-    for (let i = 0; i < 70; i++) {
-      const res = await request(app)
-        .post('/api/llm/decide')
-        .set('X-Forwarded-For', '10.0.0.1')
-      if (res.status === 200) ok++
-      else if (res.status === 429) tooMany++
+    // BOO-507: TWO determinism fixes for this test:
+    //   (1) Pin `Date.now()` so the middleware's 60-second `_windowStart()`
+    //       bucket doesn't roll mid-burst under CPU load. Surgical spy — keeps
+    //       `new Date()` live so the HTTP stack's `Date` response header still
+    //       works (`vi.useFakeTimers({ toFake: ['Date'] })` mocks Date wholesale
+    //       and causes `Error: Parse Error: Expected HTTP/` in supertest).
+    //   (2) Share ONE listener across all 70 requests instead of supertest's
+    //       default per-call `app.listen(0)`. 70 rapid listen/close cycles
+    //       exhaust the macOS ephemeral-port pool and TIME_WAIT recycling
+    //       produces sporadic `socket hang up`, `ECONNRESET`, and wrong-status
+    //       responses.
+    const FROZEN_MS = new Date('2026-01-01T00:00:30.000Z').getTime()
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(FROZEN_MS)
+    const { server, close } = listen(makeApp(60, 600, 'player-001'))
+    try {
+      let ok = 0
+      let tooMany = 0
+      for (let i = 0; i < 70; i++) {
+        const res = await request(server)
+          .post('/api/llm/decide')
+          .set('X-Forwarded-For', '10.0.0.1')
+        if (res.status === 200) ok++
+        else if (res.status === 429) tooMany++
+      }
+      expect(ok).toBe(60)
+      expect(tooMany).toBe(10)
+    } finally {
+      nowSpy.mockRestore()
+      await close()
     }
-    expect(ok).toBe(60)
-    expect(tooMany).toBe(10)
   })
 
   it('429 response includes Retry-After header', async () => {

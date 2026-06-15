@@ -33,6 +33,21 @@ import { saveGame, loadGame } from './persistence/save'
 import { validateSaveV1, type SaveV1 } from './save/schema'
 import type { ProviderSettings } from './ai/types'
 import { startSceneAudio, type SceneAudioHandle } from './audio/sceneAudio'
+import { showToast } from './ui/toast'
+import { submitScore, ApiError } from './api/leaderboard'
+
+// ---------------------------------------------------------------------------
+// Leaderboard constants
+// ---------------------------------------------------------------------------
+
+const LB_ZONE = 'forest'
+const LB_FACTION = 'player'
+
+/** Score = weighted loot sum: gold×10, wood×5, ironOre×15. */
+function computeScore(items: ReadonlyArray<{ id: string; qty: number }>): number {
+  const weights: Record<string, number> = { gold: 10, wood: 5, ironOre: 15 }
+  return items.reduce((acc, { id, qty }) => acc + (weights[id] ?? 1) * qty, 0)
+}
 
 // ---------------------------------------------------------------------------
 // Combat constants
@@ -64,23 +79,26 @@ const providerSettingsPanel = createProviderSettingsPanel()
 // Main menu — shown immediately before game loads
 // ---------------------------------------------------------------------------
 
-const mainMenu = createMainMenu({
-  onNewGame: () => startGame(null),
-  onContinue: () => void (async () => {
-    const record = await loadGame(0)
-    let savedState: SaveV1 | null = null
-    if (record !== null) {
-      try {
-        savedState = validateSaveV1(record.payload)
-      } catch {
-        // Corrupt save — start fresh
-        console.warn('[korovan] corrupt save data, starting fresh')
+const mainMenu = createMainMenu(
+  {
+    onNewGame: () => startGame(null),
+    onContinue: () => void (async () => {
+      const record = await loadGame(0)
+      let savedState: SaveV1 | null = null
+      if (record !== null) {
+        try {
+          savedState = validateSaveV1(record.payload)
+        } catch {
+          // Corrupt save — start fresh
+          console.warn('[korovan] corrupt save data, starting fresh')
+        }
       }
-    }
-    startGame(savedState)
-  })(),
-  onProviderSettings: () => providerSettingsPanel.open(),
-})
+      startGame(savedState)
+    })(),
+    onProviderSettings: () => providerSettingsPanel.open(),
+  },
+  { zone: LB_ZONE, faction: LB_FACTION },
+)
 
 // Probe server for a save so we can enable/disable the "Continue" button
 loadGame(0).then((record) => mainMenu.setContinueAvailable(record !== null)).catch(() => {
@@ -147,6 +165,27 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     if (isRespawning) return
     isRespawning = true
     sceneAudio?.pause()
+
+    // Submit run score non-blockingly (must not stall the death screen)
+    const runScore = computeScore(inventory.list())
+    submitScore({ zone: LB_ZONE, faction: LB_FACTION, score: runScore })
+      .then(({ rank }) => {
+        showToast(`Submitted! Rank #${rank}.`, 'success')
+        mainMenu.refreshLeaderboard()
+      })
+      .catch((err: unknown) => {
+        const status = err instanceof ApiError ? err.status : 0
+        if (status === 429) {
+          showToast("Couldn't submit — keep playing!", 'error')
+        } else if (status === 0) {
+          // Network failure — silent; toast would only alarm the player
+          console.warn('[korovan] leaderboard submit failed (network)')
+        } else {
+          showToast("Couldn't submit — keep playing!", 'error')
+        }
+      })
+
+
     deathScreen.show(() => {
       playerHp.reset()
       pendingRespawn = true

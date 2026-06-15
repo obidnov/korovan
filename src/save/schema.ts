@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { ProviderSettings } from '../ai/types.js';
 import type { CaravanSaveState } from '../world/caravan.js';
 
 // Placeholder until inventory issue defines the canonical shape
@@ -7,16 +6,6 @@ export interface LootItem {
   id: string;
   qty: number;
 }
-
-// Mirrors ProviderSettings from ../ai/types — the `satisfies` clause below
-// ensures the zod-inferred type stays structurally compatible at compile time
-const providerSettingsSchema = z.object({
-  id: z.enum(['deepseek', 'anthropic', 'openai-compat']),
-  baseUrl: z.string(),
-  model: z.string(),
-  apiKey: z.string(),
-  timeoutMs: z.number().int().positive(),
-}) satisfies z.ZodType<ProviderSettings>;
 
 export const lootItemSchema = z.object({
   id: z.string(),
@@ -44,9 +33,11 @@ const saveV1Schema = z.object({
     // null accepted for saves predating the caravan feature (BOO-387)
     caravanState: z.union([caravanSaveStateSchema, z.null()]),
   }),
+  // settings.provider was client-side in pre-BOO-485 saves; now server-side per P0-3/P0-4.
+  // Field kept optional so old saves continue to parse without error.
   settings: z.object({
-    provider: providerSettingsSchema,
-  }),
+    provider: z.unknown().optional(),
+  }).optional(),
 });
 
 export type SaveV1 = z.infer<typeof saveV1Schema>;

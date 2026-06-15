@@ -5,7 +5,7 @@
  *   - HP bar (colour shifts green → amber → red as HP drops)
  *   - Loot counter (Gold / Wood / Iron)
  *   - Save button
- *   - Provider status pill
+ *   - Settings button
  *
  * Designed to be updated reactively: call setHp() each frame for smooth HP
  * bar updates; call setInventory() from the inventory onChange callback.
@@ -15,7 +15,7 @@ import type { LootItem } from '../game/inventory'
 
 export interface HudOptions {
   onSave: () => void
-  onProviderSettings: () => void
+  onSettings: () => void
 }
 
 export interface Hud {
@@ -25,8 +25,6 @@ export interface Hud {
   setHp(hp: number, maxHp: number): void
   /** Update the loot counter. Call from inventory.onChange(). */
   setInventory(items: ReadonlyArray<LootItem>): void
-  /** Update the provider status pill. */
-  setProvider(id: string): void
   /** Remove HUD from DOM. */
   dispose(): void
 }
@@ -76,7 +74,7 @@ export function createHud(opts: HudOptions): Hud {
   lootSection.setAttribute('aria-label', 'Inventory')
   lootSection.textContent = 'Gold: 0 / Wood: 0 / Iron: 0'
 
-  // ── Actions row (save + provider) ────────────────────────────────────────
+  // ── Actions row (save + settings) ────────────────────────────────────────
   const actionsRow = document.createElement('div')
   actionsRow.className = 'hud-actions'
 
@@ -90,23 +88,16 @@ export function createHud(opts: HudOptions): Hud {
     flashSave()
   })
 
-  const providerPill = document.createElement('div')
-  providerPill.id = 'hud-provider'
-  providerPill.className = 'hud-provider-pill'
-  providerPill.setAttribute('title', 'Click to configure AI provider')
-  providerPill.setAttribute('role', 'button')
-  providerPill.setAttribute('tabindex', '0')
-  providerPill.textContent = 'Provider: —'
-  providerPill.addEventListener('click', opts.onProviderSettings)
-  providerPill.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      opts.onProviderSettings()
-    }
-  })
+  const settingsBtn = document.createElement('button')
+  settingsBtn.type = 'button'
+  settingsBtn.id = 'hud-settings'
+  settingsBtn.className = 'hud-btn'
+  settingsBtn.textContent = 'Settings'
+  settingsBtn.setAttribute('aria-label', 'Open settings')
+  settingsBtn.addEventListener('click', opts.onSettings)
 
   actionsRow.appendChild(saveBtn)
-  actionsRow.appendChild(providerPill)
+  actionsRow.appendChild(settingsBtn)
 
   // ── Assemble ──────────────────────────────────────────────────────────────
   root.appendChild(hpSection)
@@ -162,10 +153,6 @@ export function createHud(opts: HudOptions): Hud {
       lootSection.textContent = LOOT_DISPLAY
         .map(({ id, label }) => `${label}: ${counts[id] ?? 0}`)
         .join(' / ')
-    },
-
-    setProvider(id: string) {
-      providerPill.textContent = `Provider: ${id}`
     },
 
     dispose() {

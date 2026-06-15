@@ -10,7 +10,7 @@
 export interface MainMenuCallbacks {
   onNewGame: () => void
   onContinue: () => void
-  onProviderSettings: () => void
+  onSettings: () => void
 }
 
 export interface MainMenu {
@@ -48,8 +48,8 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenu {
   continueBtn.id = 'mm-continue'
   continueBtn.style.display = 'none'
 
-  const providerBtn = makeMenuBtn('Provider Settings', '', callbacks.onProviderSettings)
-  providerBtn.id = 'mm-provider'
+  const providerBtn = makeMenuBtn('Settings', '', callbacks.onSettings)
+  providerBtn.id = 'mm-settings'
 
   const quitBtn = makeMenuBtn('Quit', 'mm-btn--muted', () => {
     quitMsg.style.display = 'block'

@@ -1,4 +1,5 @@
 import './style.css'
+import { runBootstrap } from './identity/bootstrap'
 import * as THREE from 'three'
 import Stats from 'stats.js'
 import { createRenderer } from './engine/renderer'
@@ -93,11 +94,13 @@ const mainMenu = createMainMenu({
   onSettings: () => settingsPanel.open(),
 })
 
-// Probe server for a save so we can enable/disable the "Continue" button
-loadGame(0).then((record) => mainMenu.setContinueAvailable(record !== null)).catch(() => {
-  mainMenu.setContinueAvailable(false)
+// Bootstrap must resolve before any game content is shown.
+// runBootstrap shows its own loading overlay; the main menu appears only after it resolves.
+void runBootstrap().then(async () => {
+  const record = await loadGame(0).catch(() => null)
+  mainMenu.setContinueAvailable(record !== null)
+  mainMenu.show()
 })
-mainMenu.show()
 
 // ---------------------------------------------------------------------------
 // Game bootstrap — called once per session (New Game or Continue)

@@ -17,6 +17,8 @@ const DEFAULT_COMMAND: DecideOutput = {
     sessionId: 'fake-session',
     factionId: 'elves',
     ticksSinceStart: 0,
+    decisionCount: 0,
+    lastCommand: null,
     providerContext: null,
   },
 }

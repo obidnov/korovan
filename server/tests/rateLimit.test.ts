@@ -127,22 +127,30 @@ describe('createRateLimiter — per-identity limit', () => {
   })
 
   it('429 response includes Retry-After header', async () => {
-    const app = makeApp(1, 1000, 'player-002')
-    await request(app).post('/api/llm/decide').set('X-Forwarded-For', '10.0.0.2')
-    const res = await request(app).post('/api/llm/decide').set('X-Forwarded-For', '10.0.0.2')
-    expect(res.status).toBe(429)
-    expect(Number(res.headers['retry-after'])).toBeGreaterThan(0)
+    const { server, close } = listen(makeApp(1, 1000, 'player-002'))
+    try {
+      await request(server).post('/api/llm/decide').set('X-Forwarded-For', '10.0.0.2')
+      const res = await request(server).post('/api/llm/decide').set('X-Forwarded-For', '10.0.0.2')
+      expect(res.status).toBe(429)
+      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0)
+    } finally {
+      await close()
+    }
   })
 
   it('same player, two different IPs → per-identity limit still binds', async () => {
-    const app = makeApp(5, 1000, 'player-003')
-    // 5 calls from IP A — exhausts identity budget
-    for (let i = 0; i < 5; i++) {
-      await request(app).post('/api/llm/decide').set('X-Forwarded-For', '10.1.0.1')
+    const { server, close } = listen(makeApp(5, 1000, 'player-003'))
+    try {
+      // 5 calls from IP A — exhausts identity budget
+      for (let i = 0; i < 5; i++) {
+        await request(server).post('/api/llm/decide').set('X-Forwarded-For', '10.1.0.1')
+      }
+      // 6th call from IP B → 429 because identity counter is exhausted
+      const res = await request(server).post('/api/llm/decide').set('X-Forwarded-For', '10.1.0.2')
+      expect(res.status).toBe(429)
+    } finally {
+      await close()
     }
-    // 6th call from IP B → 429 because identity counter is exhausted
-    const res = await request(app).post('/api/llm/decide').set('X-Forwarded-For', '10.1.0.2')
-    expect(res.status).toBe(429)
   })
 })
 
@@ -153,41 +161,52 @@ describe('createRateLimiter — per-IP limit', () => {
 
   it('two players, one IP → per-IP ceiling applies; one can starve the other', async () => {
     // IP budget = 5, identity budget = 100 (effectively unlimited per-player)
-    const appA = makeApp(100, 5, 'playerA')
-    const appB = makeApp(100, 5, 'playerB')
-
-    // Player A exhausts the shared IP budget
-    for (let i = 0; i < 5; i++) {
-      await request(appA).post('/api/llm/decide').set('X-Forwarded-For', '192.168.1.1')
+    const handleA = listen(makeApp(100, 5, 'playerA'))
+    const handleB = listen(makeApp(100, 5, 'playerB'))
+    try {
+      // Player A exhausts the shared IP budget
+      for (let i = 0; i < 5; i++) {
+        await request(handleA.server).post('/api/llm/decide').set('X-Forwarded-For', '192.168.1.1')
+      }
+      // Player B (same IP) hits 429
+      const res = await request(handleB.server).post('/api/llm/decide').set('X-Forwarded-For', '192.168.1.1')
+      expect(res.status).toBe(429)
+    } finally {
+      await handleA.close()
+      await handleB.close()
     }
-    // Player B (same IP) hits 429
-    const res = await request(appB).post('/api/llm/decide').set('X-Forwarded-For', '192.168.1.1')
-    expect(res.status).toBe(429)
   })
 
   it('same player, different IPs share per-identity limit but not per-IP limit', async () => {
     // identity budget = 3, ip budget = 100
-    const app = makeApp(3, 100, 'player-x')
-
-    // First 3 from IP1 — succeeds
-    for (let i = 0; i < 3; i++) {
-      const res = await request(app).post('/api/llm/decide').set('X-Forwarded-For', '1.1.1.1')
-      expect(res.status).toBe(200)
+    const { server, close } = listen(makeApp(3, 100, 'player-x'))
+    try {
+      // First 3 from IP1 — succeeds
+      for (let i = 0; i < 3; i++) {
+        const res = await request(server).post('/api/llm/decide').set('X-Forwarded-For', '1.1.1.1')
+        expect(res.status).toBe(200)
+      }
+      // 4th from IP2 — hits identity limit (not IP limit)
+      const res = await request(server).post('/api/llm/decide').set('X-Forwarded-For', '2.2.2.2')
+      expect(res.status).toBe(429)
+    } finally {
+      await close()
     }
-    // 4th from IP2 — hits identity limit (not IP limit)
-    const res = await request(app).post('/api/llm/decide').set('X-Forwarded-For', '2.2.2.2')
-    expect(res.status).toBe(429)
   })
 
   it('unknown player (no playerId) falls back to IP-only limiting', async () => {
     // No playerId → identity check skipped
-    const app = makeApp(1, 3) // identity limit 1, but no playerId attached
-    for (let i = 0; i < 3; i++) {
-      const res = await request(app).post('/api/llm/decide').set('X-Forwarded-For', '5.5.5.5')
-      expect(res.status).toBe(200)
+    const { server, close } = listen(makeApp(1, 3)) // identity limit 1, but no playerId attached
+    try {
+      for (let i = 0; i < 3; i++) {
+        const res = await request(server).post('/api/llm/decide').set('X-Forwarded-For', '5.5.5.5')
+        expect(res.status).toBe(200)
+      }
+      const res = await request(server).post('/api/llm/decide').set('X-Forwarded-For', '5.5.5.5')
+      expect(res.status).toBe(429)
+    } finally {
+      await close()
     }
-    const res = await request(app).post('/api/llm/decide').set('X-Forwarded-For', '5.5.5.5')
-    expect(res.status).toBe(429)
   })
 })
 
@@ -247,51 +266,55 @@ describe('createRateLimiter — cross-endpoint counter isolation', () => {
   it('exhausting /api/leaderboard does NOT exhaust /api/saves', async () => {
     const IP = '10.0.1.1'
     // ipPerMin=3: POST /api/leaderboard is exhausted after 3 calls.
-    const app = makeTwoRouterApp(3)
+    const { server, close } = listen(makeTwoRouterApp(3))
+    try {
+      for (let i = 0; i < 3; i++) {
+        const res = await request(server).post('/api/leaderboard').set('X-Forwarded-For', IP)
+        expect(res.status).toBe(200)
+      }
+      // /api/leaderboard is now exhausted
+      const blocked = await request(server).post('/api/leaderboard').set('X-Forwarded-For', IP)
+      expect(blocked.status).toBe(429)
 
-    for (let i = 0; i < 3; i++) {
-      const res = await request(app)
-        .post('/api/leaderboard')
-        .set('X-Forwarded-For', IP)
-      expect(res.status).toBe(200)
+      // /api/saves must still have its own fresh counter
+      const saved = await request(server).post('/api/saves').set('X-Forwarded-For', IP)
+      expect(saved.status).toBe(200)
+    } finally {
+      await close()
     }
-    // /api/leaderboard is now exhausted
-    const blocked = await request(app)
-      .post('/api/leaderboard')
-      .set('X-Forwarded-For', IP)
-    expect(blocked.status).toBe(429)
-
-    // /api/saves must still have its own fresh counter
-    const saved = await request(app)
-      .post('/api/saves')
-      .set('X-Forwarded-For', IP)
-    expect(saved.status).toBe(200)
   })
 
   it('exhausting /api/saves does NOT exhaust /api/leaderboard', async () => {
     const IP = '10.0.1.2'
-    const app = makeTwoRouterApp(2)
+    const { server, close } = listen(makeTwoRouterApp(2))
+    try {
+      for (let i = 0; i < 2; i++) {
+        await request(server).post('/api/saves').set('X-Forwarded-For', IP)
+      }
+      const blocked = await request(server).post('/api/saves').set('X-Forwarded-For', IP)
+      expect(blocked.status).toBe(429)
 
-    for (let i = 0; i < 2; i++) {
-      await request(app).post('/api/saves').set('X-Forwarded-For', IP)
+      const res = await request(server).post('/api/leaderboard').set('X-Forwarded-For', IP)
+      expect(res.status).toBe(200)
+    } finally {
+      await close()
     }
-    const blocked = await request(app).post('/api/saves').set('X-Forwarded-For', IP)
-    expect(blocked.status).toBe(429)
-
-    const res = await request(app).post('/api/leaderboard').set('X-Forwarded-For', IP)
-    expect(res.status).toBe(200)
   })
 
   it('single-consumer case unchanged: /api/leaderboard still enforces its own limit', async () => {
     const IP = '10.0.1.3'
-    const app = makeTwoRouterApp(3)
-    for (let i = 0; i < 3; i++) {
+    const { server, close } = listen(makeTwoRouterApp(3))
+    try {
+      for (let i = 0; i < 3; i++) {
+        expect(
+          (await request(server).post('/api/leaderboard').set('X-Forwarded-For', IP)).status,
+        ).toBe(200)
+      }
       expect(
-        (await request(app).post('/api/leaderboard').set('X-Forwarded-For', IP)).status,
-      ).toBe(200)
+        (await request(server).post('/api/leaderboard').set('X-Forwarded-For', IP)).status,
+      ).toBe(429)
+    } finally {
+      await close()
     }
-    expect(
-      (await request(app).post('/api/leaderboard').set('X-Forwarded-For', IP)).status,
-    ).toBe(429)
   })
 })

@@ -252,7 +252,7 @@ describe('POST /api/identity/bootstrap', () => {
   describe('rate limiting (per-IP 30/min)', () => {
     it('allows the first 30 requests from the same IP', async () => {
       for (let i = 0; i < 30; i++) {
-        const res = await supertest(app)
+        const res = await supertest(handle.server)
           .post('/api/identity/bootstrap')
           .set('X-Forwarded-For', '203.0.113.1')
           .send({})
@@ -262,12 +262,12 @@ describe('POST /api/identity/bootstrap', () => {
 
     it('returns 429 with Retry-After on the 31st request from the same IP', async () => {
       for (let i = 0; i < 30; i++) {
-        await supertest(app)
+        await supertest(handle.server)
           .post('/api/identity/bootstrap')
           .set('X-Forwarded-For', '203.0.113.2')
           .send({})
       }
-      const res = await supertest(app)
+      const res = await supertest(handle.server)
         .post('/api/identity/bootstrap')
         .set('X-Forwarded-For', '203.0.113.2')
         .send({})
@@ -277,12 +277,12 @@ describe('POST /api/identity/bootstrap', () => {
 
     it('rate-limited response sets no player cookie (DB/HMAC work skipped)', async () => {
       for (let i = 0; i < 30; i++) {
-        await supertest(app)
+        await supertest(handle.server)
           .post('/api/identity/bootstrap')
           .set('X-Forwarded-For', '203.0.113.3')
           .send({})
       }
-      const res = await supertest(app)
+      const res = await supertest(handle.server)
         .post('/api/identity/bootstrap')
         .set('X-Forwarded-For', '203.0.113.3')
         .send({})
@@ -293,12 +293,12 @@ describe('POST /api/identity/bootstrap', () => {
 
     it('a different IP is not affected by another IP hitting the limit', async () => {
       for (let i = 0; i < 30; i++) {
-        await supertest(app)
+        await supertest(handle.server)
           .post('/api/identity/bootstrap')
           .set('X-Forwarded-For', '203.0.113.4')
           .send({})
       }
-      const res = await supertest(app)
+      const res = await supertest(handle.server)
         .post('/api/identity/bootstrap')
         .set('X-Forwarded-For', '203.0.113.5')
         .send({})

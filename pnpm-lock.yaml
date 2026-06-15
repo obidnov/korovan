@@ -75,6 +75,9 @@ importers:
       express:
         specifier: ^5.0.1
         version: 5.2.1
+      zod:
+        specifier: ^3.24.3
+        version: 3.25.76
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.13
@@ -88,6 +91,9 @@ importers:
       '@types/supertest':
         specifier: ^6.0.2
         version: 6.0.3
+      msw:
+        specifier: ^2.14.6
+        version: 2.14.6(@types/node@20.19.43)(typescript@5.9.3)
       supertest:
         specifier: ^7.0.0
         version: 7.2.2
@@ -2125,6 +2131,9 @@ packages:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -2388,7 +2397,6 @@ snapshots:
       '@inquirer/type': 4.0.7(@types/node@20.19.43)
     optionalDependencies:
       '@types/node': 20.19.43
-    optional: true
 
   '@inquirer/confirm@6.1.1(@types/node@25.9.3)':
     dependencies:
@@ -2408,7 +2416,6 @@ snapshots:
       signal-exit: 4.1.0
     optionalDependencies:
       '@types/node': 20.19.43
-    optional: true
 
   '@inquirer/core@11.2.1(@types/node@25.9.3)':
     dependencies:
@@ -2427,7 +2434,6 @@ snapshots:
   '@inquirer/type@4.0.7(@types/node@20.19.43)':
     optionalDependencies:
       '@types/node': 20.19.43
-    optional: true
 
   '@inquirer/type@4.0.7(@types/node@25.9.3)':
     optionalDependencies:
@@ -3514,7 +3520,6 @@ snapshots:
       typescript: 5.9.3
     transitivePeerDependencies:
       - '@types/node'
-    optional: true
 
   msw@2.14.6(@types/node@25.9.3)(typescript@5.9.3):
     dependencies:
@@ -4198,5 +4203,7 @@ snapshots:
       yargs-parser: 21.1.1
 
   yocto-queue@0.1.0: {}
+
+  zod@3.25.76: {}
 
   zod@4.4.3: {}

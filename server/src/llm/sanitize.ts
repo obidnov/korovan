@@ -26,10 +26,8 @@ function stripControlChars(s: string): string {
   // C1 range (U+0080-U+009F): B3 hardening -- dangerous in log viewers/terminals.
   // Direction overrides: U+200E LRM, U+200F RLM, U+202A-U+202E embedding/override,
   // U+2066-U+2069 isolate/pop-directional.
-  return s.replace(
-    /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\x80-\x9F‎‏‪-‮⁦-⁩]/g,
-    '',
-  )
+  // eslint-disable-next-line no-control-regex -- intentionally strips C0/C1/direction-override chars
+  return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\x80-\x9F‎‏‪-‮⁦-⁩]/g, '')
 }
 
 /**
@@ -44,7 +42,7 @@ function applyAllowlist(s: string): string {
   // Allowed punctuation: . , - _ ' " ! ? ( ) [ ] @ # % & * + = /
   // \[ and \] are escaped to avoid ambiguity inside the character class.
   // Backslash excluded per BOO-495 B6.
-  return s.replace(/[^\p{L}\p{N}\s.,\-_'"!?()\[\]@#%&*+=/]/gu, ' ')
+  return s.replace(/[^\p{L}\p{N}\s.,\-_'"!?()[\]@#%&*+=/]/gu, ' ')
 }
 
 /**

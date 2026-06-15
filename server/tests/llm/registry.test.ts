@@ -16,8 +16,8 @@ describe('createRegistry()', () => {
   it('registers and retrieves a provider', () => {
     const fake = createFakeProvider()
     registry.register(fake)
-    expect(registry.get('deepseek')).toBe(fake)
-    expect(registry.list()).toContain('deepseek')
+    expect(registry.get('fake')).toBe(fake)
+    expect(registry.list()).toContain('fake')
   })
 
   it('throws on duplicate registration', () => {

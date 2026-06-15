@@ -30,7 +30,7 @@ const HOME_NODE_BY_FACTION: Record<FactionId, string> = {
 
 export function createScriptedProvider(): LLMProvider {
   return {
-    name: 'deepseek', // acts as a stand-in; callers should check via registry
+    name: 'scripted',
 
     async decide(input: DecideInput): Promise<DecideOutput> {
       const command = pickCommand(input.snapshot, input.faction)

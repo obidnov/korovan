@@ -14,7 +14,7 @@ import type {
 import { LLMProviderError } from './types.js'
 import { AgentCommandSchema, AGENT_COMMAND_JSON_SCHEMA } from './schema.js'
 
-const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1'
+const DEFAULT_BASE_URL = 'https://api.deepseek.com'
 const DEFAULT_MODEL = 'deepseek-chat'
 const DEFAULT_TIMEOUT_MS = 20_000
 // Keep last N conversation turns in providerContext to stay within context limits.
@@ -275,7 +275,7 @@ async function assertResponseOk(response: Response): Promise<void> {
     })
   }
 
-  throw new LLMProviderError('network', `DeepSeek unexpected HTTP ${status}`, { httpStatus: status })
+  throw new LLMProviderError('unexpected-status', `DeepSeek unexpected HTTP ${status}`, { httpStatus: status })
 }
 
 function extractAndValidateCommand(raw: unknown): AgentCommand {

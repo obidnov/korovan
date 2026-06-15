@@ -5,6 +5,8 @@ import { createDeepSeekProvider } from '../../src/llm/deepseek.js'
 import type { DecideInput } from '../../src/llm/types.js'
 import { LLMProviderError } from '../../src/llm/types.js'
 import { logger, LogLine } from '../../src/logger.js'
+import { createRegistry } from '../../src/llm/registry.js'
+import { createScriptedProvider } from '../../src/llm/scripted.js'
 
 const BASE_URL = 'https://api.deepseek.test'
 const ENDPOINT = `${BASE_URL}/v1/chat/completions`
@@ -420,5 +422,61 @@ describe('ping()', () => {
 
     expect(result.ok).toBe(false)
     expect(result.error).toBeDefined()
+  })
+})
+
+// ─── Production URL regression ────────────────────────────────────────────────
+// Pins the exact URL the adapter hits in production so the double-/v1 bug
+// (DEFAULT_BASE_URL had /v1; fetch template also appended /v1) cannot regress silently.
+
+describe('production URL regression', () => {
+  const PROD_BASE = 'https://api.deepseek.com'
+  const PROD_ENDPOINT = `${PROD_BASE}/v1/chat/completions`
+
+  it('hits /v1/chat/completions on the prod default base URL (no explicit baseUrl)', async () => {
+    server.use(
+      http.post(PROD_ENDPOINT, () => HttpResponse.json(makeToolCallResponse(VALID_PATROL_ARGS))),
+    )
+
+    // No baseUrl → uses DEFAULT_BASE_URL = 'https://api.deepseek.com'
+    const provider = createDeepSeekProvider({ apiKey: 'sk-test' })
+    const output = await provider.decide(DECIDE_INPUT)
+
+    expect(output.command.kind).toBe('patrol')
+  })
+
+  it('ping() hits /v1/chat/completions on the prod default base URL', async () => {
+    server.use(
+      http.post(PROD_ENDPOINT, () =>
+        HttpResponse.json({ choices: [{ message: { role: 'assistant', content: 'pong' } }] }),
+      ),
+    )
+
+    const provider = createDeepSeekProvider({ apiKey: 'sk-test' })
+    const result = await provider.ping()
+
+    expect(result.ok).toBe(true)
+  })
+})
+
+// ─── Registry no-collision ────────────────────────────────────────────────────
+
+describe('registry', () => {
+  it('registers scripted provider alongside deepseek without collision', () => {
+    const registry = createRegistry()
+    registry.register(createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com' }))
+    registry.register(createScriptedProvider())
+
+    expect(registry.list()).toContain('deepseek')
+    expect(registry.list()).toContain('scripted')
+    expect(registry.list()).toHaveLength(2)
+  })
+
+  it('throws on duplicate provider registration', () => {
+    const registry = createRegistry()
+    registry.register(createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com' }))
+    expect(() =>
+      registry.register(createDeepSeekProvider({ apiKey: 'sk-other', baseUrl: 'https://api.deepseek.com' })),
+    ).toThrow(/already registered/)
   })
 })

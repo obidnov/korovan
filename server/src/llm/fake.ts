@@ -25,7 +25,7 @@ export function createFakeProvider(config: FakeProviderConfig = {}): LLMProvider
   const { response = DEFAULT_COMMAND, errorToThrow, pingLatencyMs = 1 } = config
 
   return {
-    name: 'deepseek',
+    name: 'fake',
 
     async decide(_input: DecideInput): Promise<DecideOutput> {
       if (errorToThrow) throw errorToThrow

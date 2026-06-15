@@ -8,7 +8,7 @@
 // Provider identity
 // ---------------------------------------------------------------------------
 
-export type ProviderId = 'deepseek' | 'anthropic' | 'openai-compat'
+export type ProviderId = 'deepseek' | 'anthropic' | 'openai-compat' | 'scripted' | 'fake'
 
 // ---------------------------------------------------------------------------
 // Strategic game types (sanitized — no user-controlled raw strings allowed)
@@ -156,12 +156,13 @@ export interface LLMProvider {
 // ---------------------------------------------------------------------------
 
 export type LLMProviderErrorCode =
-  | 'network'          // fetch threw (DNS / TCP / TLS)
-  | 'timeout'          // request exceeded provider-configured timeoutMs
-  | 'rate-limited'     // HTTP 429
-  | 'auth'             // HTTP 401 / 403
-  | 'provider-5xx'     // HTTP 5xx
-  | 'schema-invalid'   // response does not match AgentCommand schema
+  | 'network'             // fetch threw (DNS / TCP / TLS)
+  | 'timeout'             // request exceeded provider-configured timeoutMs
+  | 'rate-limited'        // HTTP 429
+  | 'auth'                // HTTP 401 / 403
+  | 'provider-5xx'        // HTTP 5xx
+  | 'schema-invalid'      // response does not match AgentCommand schema
+  | 'unexpected-status'   // unexpected 4xx (400, 404, etc.) — not auth / rate-limit
 
 export class LLMProviderError extends Error {
   readonly code: LLMProviderErrorCode

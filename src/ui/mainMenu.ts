@@ -5,12 +5,7 @@
  * Keyboard: Tab/Shift-Tab to navigate, Enter/Space to activate.
  * "Continue" button hidden when no save exists.
  * "Quit" shows a close-tab message (window.close() is blocked in most browsers).
- *
- * A leaderboard panel is mounted to the right of the nav column and refreshes
- * each time the menu is shown.
  */
-
-import { createLeaderboardPanel, type LeaderboardPanel } from './leaderboard'
 
 export interface MainMenuCallbacks {
   onNewGame: () => void
@@ -18,35 +13,19 @@ export interface MainMenuCallbacks {
   onProviderSettings: () => void
 }
 
-export interface MainMenuOptions {
-  /** Leaderboard zone identifier (default: 'forest'). */
-  zone?: string
-  /** Leaderboard faction identifier (default: 'player'). */
-  faction?: string
-}
-
 export interface MainMenu {
   show(): void
   hide(): void
   setContinueAvailable(available: boolean): void
-  /** Refresh the leaderboard (call after a successful score submit). */
-  refreshLeaderboard(): void
-  dispose(): void
 }
 
-export function createMainMenu(
-  callbacks: MainMenuCallbacks,
-  opts: MainMenuOptions = {},
-): MainMenu {
-  const { zone = 'forest', faction = 'player' } = opts
-
+export function createMainMenu(callbacks: MainMenuCallbacks): MainMenu {
   const overlay = document.createElement('div')
   overlay.id = 'mm-overlay'
   overlay.setAttribute('role', 'main')
   overlay.setAttribute('aria-label', 'Main menu')
   overlay.style.display = 'none'
 
-  // ── Left column: branding + nav ───────────────────────────────────────────
   const panel = document.createElement('div')
   panel.className = 'mm-panel'
 
@@ -93,19 +72,12 @@ export function createMainMenu(
   panel.appendChild(subtitle)
   panel.appendChild(nav)
   panel.appendChild(quitMsg)
-
-  // ── Right column: leaderboard ─────────────────────────────────────────────
-  const lbPanel: LeaderboardPanel = createLeaderboardPanel({ zone, faction })
-
-  // ── Assemble ──────────────────────────────────────────────────────────────
   overlay.appendChild(panel)
-  overlay.appendChild(lbPanel.element)
   document.body.appendChild(overlay)
 
   return {
     show() {
       overlay.style.display = 'flex'
-      lbPanel.refresh()
       newGameBtn.focus()
     },
     hide() {
@@ -113,13 +85,6 @@ export function createMainMenu(
     },
     setContinueAvailable(available: boolean) {
       continueBtn.style.display = available ? 'block' : 'none'
-    },
-    refreshLeaderboard() {
-      lbPanel.refresh()
-    },
-    dispose() {
-      lbPanel.dispose()
-      overlay.remove()
     },
   }
 }

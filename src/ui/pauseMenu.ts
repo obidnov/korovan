@@ -9,7 +9,7 @@
 export interface PauseMenuCallbacks {
   onResume: () => void
   onSave: () => void
-  onProviderSettings: () => void
+  onSettings: () => void
   onMainMenu: () => void
 }
 
@@ -53,11 +53,11 @@ export function createPauseMenu(callbacks: PauseMenuCallbacks): PauseMenu {
   })
   saveBtn.id = 'pm-save'
 
-  const providerBtn = makeBtn('Provider Settings', '', () => {
-    callbacks.onProviderSettings()
+  const providerBtn = makeBtn('Settings', '', () => {
+    callbacks.onSettings()
     // Keep pause menu open so user can return to it after settings
   })
-  providerBtn.id = 'pm-provider'
+  providerBtn.id = 'pm-settings'
 
   const mainMenuBtn = makeBtn('Main Menu', 'pm-btn--muted', () => {
     callbacks.onMainMenu()

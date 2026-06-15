@@ -22,17 +22,25 @@ import { createCartEntity, buildCartMesh } from './game/caravan/cartEntity'
 import { createEscortEntity, type EscortEntity } from './game/caravan/escortEntity'
 import { createLootHud } from './game/caravan/lootHud'
 import { createInventory, LOOT_GOLD, LOOT_WOOD, LOOT_IRON_ORE } from './game/inventory'
-import {
-  createProviderSettingsPanel,
-  loadProviderSettings,
-} from './ui/providerSettings'
+import { createSettingsPanel, applyAudioSettings, loadAudioSettings } from './ui/settings'
 import { createMainMenu } from './ui/mainMenu'
 import { createHud } from './ui/hud'
 import { createPauseMenu } from './ui/pauseMenu'
 import { saveGame, loadGame } from './persistence/save'
 import { validateSaveV1, type SaveV1 } from './save/schema'
-import type { ProviderSettings } from './ai/types'
 import { startSceneAudio, type SceneAudioHandle } from './audio/sceneAudio'
+
+// ---------------------------------------------------------------------------
+// One-time localStorage migration: remove legacy client-side provider keys
+// (BOO-485, supersedes BOO-391). Idempotent — safe to run on every boot.
+// ---------------------------------------------------------------------------
+
+for (const key of Object.keys(localStorage)) {
+  if (/^kr_(apikey|api_key|provider|deepseek|anthropic|openai)/i.test(key)) {
+    localStorage.removeItem(key)
+  }
+}
+localStorage.removeItem('korovan:provider-settings')
 
 // ---------------------------------------------------------------------------
 // Combat constants
@@ -55,10 +63,13 @@ const ESCORT_OFFSETS: ReadonlyArray<{ x: number; z: number }> = [
 ]
 
 // ---------------------------------------------------------------------------
-// Provider settings panel — shared between main menu and HUD
+// Settings panel — shared between main menu, HUD, and pause menu
 // ---------------------------------------------------------------------------
 
-const providerSettingsPanel = createProviderSettingsPanel()
+const settingsPanel = createSettingsPanel()
+
+// Apply persisted audio settings on boot
+applyAudioSettings(loadAudioSettings())
 
 // ---------------------------------------------------------------------------
 // Main menu — shown immediately before game loads
@@ -79,7 +90,7 @@ const mainMenu = createMainMenu({
     }
     startGame(savedState)
   })(),
-  onProviderSettings: () => providerSettingsPanel.open(),
+  onSettings: () => settingsPanel.open(),
 })
 
 // Probe server for a save so we can enable/disable the "Continue" button
@@ -238,19 +249,8 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   // HUD
   // -------------------------------------------------------------------------
 
-  const ps = loadProviderSettings() as Partial<ProviderSettings>
-  const providerLabel: string = ps.id ?? 'scripted-fallback'
-
   function buildSaveData(): SaveV1 {
     const pos = player.getPosition()
-    const cur = loadProviderSettings() as Partial<ProviderSettings>
-    const provider: ProviderSettings = {
-      id: cur.id ?? 'deepseek',
-      baseUrl: cur.baseUrl ?? 'https://api.deepseek.com/v1',
-      model: cur.model ?? 'deepseek-chat',
-      apiKey: '',
-      timeoutMs: cur.timeoutMs ?? 20_000,
-    }
     return {
       version: 1,
       player: {
@@ -261,7 +261,6 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
       world: {
         caravanState: caravanFsm.toSaveState(),
       },
-      settings: { provider },
     }
   }
 
@@ -269,11 +268,10 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     onSave: () => void saveGame(0, buildSaveData(), 1).catch((err: unknown) => {
       console.warn('[korovan] save failed:', err)
     }),
-    onProviderSettings: () => providerSettingsPanel.open(),
+    onSettings: () => settingsPanel.open(),
   })
   hud.setHp(playerHp.hp, PLAYER_MAX_HP)
   hud.setInventory(inventory.list())
-  hud.setProvider(providerLabel)
   hud.show()
 
   inventory.onChange((items) => hud.setInventory(items))
@@ -293,7 +291,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     onSave: () => void saveGame(0, buildSaveData(), 1).catch((err: unknown) => {
       console.warn('[korovan] save failed:', err)
     }),
-    onProviderSettings: () => providerSettingsPanel.open(),
+    onSettings: () => settingsPanel.open(),
     onMainMenu: () => {
       void (sceneAudio ? sceneAudio.unload() : Promise.resolve()).then(() => location.reload())
     },

@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { getDb } from '../db'
 import { sanitizeNickname } from '../sanitizer'
 import { COOKIE_NAME, signPlayerId, verifyCookieValue, dropCookie } from '../middleware/cookieAuth'
+import { createRateLimiter, ENDPOINT_PROFILES } from '../middleware/rateLimit'
 
 const COOKIE_MAX_AGE = 31536000
 
@@ -16,7 +17,9 @@ function setCookie(res: Response, playerId: string): void {
 
 const router = Router()
 
-router.post('/api/identity/bootstrap', (req: Request, res: Response): void => {
+const bootstrapLimiter = createRateLimiter(ENDPOINT_PROFILES['POST /api/identity/bootstrap'])
+
+router.post('/api/identity/bootstrap', bootstrapLimiter, (req: Request, res: Response): void => {
   const db = getDb()
   const rawCookie: string | undefined = req.cookies?.[COOKIE_NAME]
   const rawNickname: unknown = req.body?.nickname

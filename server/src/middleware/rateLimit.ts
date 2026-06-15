@@ -20,7 +20,7 @@ export const ENDPOINT_PROFILES: Record<string, RateLimitProfile> = {
   'POST /api/llm/decide': { identityPerMin: 60, ipPerMin: 600 },
   'POST /api/saves': { identityPerMin: 30, ipPerMin: 300 },
   'POST /api/leaderboard': { identityPerMin: 6, ipPerMin: 60 },
-  'POST /api/identity/bootstrap': { identityPerMin: 10, ipPerMin: 60 },
+  'POST /api/identity/bootstrap': { identityPerMin: 10, ipPerMin: 30 },
 }
 
 // --- Fixed-window counter ---

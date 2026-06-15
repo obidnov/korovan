@@ -3,6 +3,7 @@ import supertest from 'supertest'
 import { app } from '../src/app'
 import { openDb, getDb, setDb } from '../src/db'
 import { signPlayerId, COOKIE_NAME } from '../src/middleware/cookieAuth'
+import { _resetStore } from '../src/middleware/rateLimit'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -19,6 +20,7 @@ describe('POST /api/identity/bootstrap', () => {
   beforeEach(() => {
     process.env.COOKIE_SIGNING_SECRET = 'a'.repeat(32)
     setDb(openDb(':memory:'))
+    _resetStore()
   })
 
   describe('new visitor (no cookie)', () => {
@@ -221,6 +223,63 @@ describe('POST /api/identity/bootstrap', () => {
     it('returns null when nickname is empty string', async () => {
       const res = await supertest(app).post('/api/identity/bootstrap').send({ nickname: '' })
       expect(res.body.nickname).toBeNull()
+    })
+  })
+
+  describe('rate limiting (per-IP 30/min)', () => {
+    it('allows the first 30 requests from the same IP', async () => {
+      for (let i = 0; i < 30; i++) {
+        const res = await supertest(app)
+          .post('/api/identity/bootstrap')
+          .set('X-Forwarded-For', '203.0.113.1')
+          .send({})
+        expect(res.status).toBe(200)
+      }
+    })
+
+    it('returns 429 with Retry-After on the 31st request from the same IP', async () => {
+      for (let i = 0; i < 30; i++) {
+        await supertest(app)
+          .post('/api/identity/bootstrap')
+          .set('X-Forwarded-For', '203.0.113.2')
+          .send({})
+      }
+      const res = await supertest(app)
+        .post('/api/identity/bootstrap')
+        .set('X-Forwarded-For', '203.0.113.2')
+        .send({})
+      expect(res.status).toBe(429)
+      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0)
+    })
+
+    it('rate-limited response sets no player cookie (DB/HMAC work skipped)', async () => {
+      for (let i = 0; i < 30; i++) {
+        await supertest(app)
+          .post('/api/identity/bootstrap')
+          .set('X-Forwarded-For', '203.0.113.3')
+          .send({})
+      }
+      const res = await supertest(app)
+        .post('/api/identity/bootstrap')
+        .set('X-Forwarded-For', '203.0.113.3')
+        .send({})
+      expect(res.status).toBe(429)
+      const cookies = (res.headers['set-cookie'] as string[] | undefined) ?? []
+      expect(cookies.some((c) => c.startsWith(COOKIE_NAME))).toBe(false)
+    })
+
+    it('a different IP is not affected by another IP hitting the limit', async () => {
+      for (let i = 0; i < 30; i++) {
+        await supertest(app)
+          .post('/api/identity/bootstrap')
+          .set('X-Forwarded-For', '203.0.113.4')
+          .send({})
+      }
+      const res = await supertest(app)
+        .post('/api/identity/bootstrap')
+        .set('X-Forwarded-For', '203.0.113.5')
+        .send({})
+      expect(res.status).toBe(200)
     })
   })
 })

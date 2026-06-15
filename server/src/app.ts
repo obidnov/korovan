@@ -105,6 +105,7 @@ export function createApp(
     cookieAuth(loader, COOKIE_SECRET),
     leaderboardRouter,
   )
+  // cookieAuth must pass-through (not 401) on missing cookie — per-IP rate limiters mounted downstream depend on this.
   app.use(
     '/api/saves',
     cookieAuth(loader, COOKIE_SECRET),

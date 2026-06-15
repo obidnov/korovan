@@ -17,6 +17,7 @@ function setCookie(res: Response, playerId: string): void {
 
 const router = Router()
 
+// bootstrapLimiter is first — cookieAuth is intentionally absent; per-IP rate limiting must reach all anonymous requests.
 const bootstrapLimiter = createRateLimiter(ENDPOINT_PROFILES['POST /api/identity/bootstrap'])
 
 router.post('/api/identity/bootstrap', bootstrapLimiter, (req: Request, res: Response): void => {

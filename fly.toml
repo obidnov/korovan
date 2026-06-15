@@ -1,0 +1,55 @@
+# fly.toml — korovan backend, Fly.io demo phase
+# Platform rationale: docs/deploy-target.md (BOO-462)
+#
+# First-time setup (run once):
+#   brew install flyctl
+#   fly auth login
+#   fly launch --name korovan --region iad --no-deploy
+#   fly volumes create korovan_data --region iad --size 1
+#   fly secrets set DATABASE_PATH=/data/korovan.db
+#   fly secrets set AI_API_KEY=<your_key>
+#   fly secrets set SESSION_SECRET=$(openssl rand -hex 32)
+#
+# Deploy:
+#   fly deploy
+#
+# Smoke test:
+#   curl https://korovan.fly.dev/healthz
+
+app = "korovan"
+primary_region = "iad"
+
+[build]
+  # Dockerfile must be at repo root (delivered by BOO-461).
+  # Build context: repo root.
+  # Build stages: pnpm install → pnpm --filter server build → node server/dist/index.js
+
+[env]
+  NODE_ENV = "production"
+  # PORT is auto-injected by Fly.io to match internal_port (8080).
+  # DATABASE_PATH, AI_API_KEY, SESSION_SECRET → set via `fly secrets set` (never in fly.toml).
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/healthz"
+    protocol = "http"
+    timeout = "5s"
+    unhealthy_threshold = 2
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[mounts]
+  source = "korovan_data"
+  destination = "/data"

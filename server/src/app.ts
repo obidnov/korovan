@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser'
 import { randomUUID } from 'crypto'
 import { accessSync, constants } from 'node:fs'
 import { logger, redactRecord } from './logger'
+import { identityRouter } from './routes/identity'
 import { leaderboardRouter } from './routes/leaderboard'
 import { cookieAuth } from './middleware/cookieAuth'
 import { savesRouter } from './routes/saves'
@@ -81,6 +82,7 @@ app.get('/healthz', (_req: Request, res: Response): void => {
   })
 })
 
+app.use(identityRouter)
 app.use('/api/leaderboard', leaderboardRouter)
 app.use(
   '/api/saves',

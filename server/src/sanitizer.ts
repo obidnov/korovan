@@ -1,0 +1,14 @@
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g
+const TEMPLATE_INJECTION = /\$\{[^}]*\}|\{\{[^}]*\}\}|<%[^%]*%>/g
+const JAILBREAK_PREFIXES = /\bignore\s+all\s+previous\b|\byou\s+are\s+now\b/gi
+
+export function sanitizeNickname(raw: string | null): string | null {
+  if (raw == null || raw === '') return null
+  let s = raw
+  s = s.replace(CONTROL_CHARS, '')
+  s = s.replace(TEMPLATE_INJECTION, '[redacted]')
+  s = s.replace(JAILBREAK_PREFIXES, '[redacted]')
+  s = s.slice(0, 32)
+  return s.length > 0 ? s : null
+}

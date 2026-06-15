@@ -24,17 +24,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Type check
+      - name: Type check (client)
         run: pnpm typecheck
+
+      - name: Type check (server)
+        run: pnpm --filter server typecheck
 
       - name: Lint
         run: pnpm lint
 
-      - name: Test
+      - name: Test (client)
         run: pnpm test
 
-      - name: Build
+      - name: Test (server)
+        run: pnpm --filter server test
+
+      - name: Build (client)
         run: pnpm build
+
+      - name: Build (server)
+        run: pnpm --filter server build
 
       - name: Bundle size budget check
         run: |

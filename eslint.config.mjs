@@ -8,7 +8,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettierConfig,
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', 'server/dist/**', 'server/node_modules/**'],
   },
   {
     rules: {
@@ -18,9 +18,9 @@ export default tseslint.config(
       ],
     },
   },
-  // Node.js scripts (generator, config files)
+  // Node.js scripts (generator, config files) + server
   {
-    files: ['scripts/**/*.mjs', 'vite.config.ts', 'eslint.config.mjs'],
+    files: ['scripts/**/*.mjs', 'vite.config.ts', 'eslint.config.mjs', 'server/**/*.ts'],
     languageOptions: {
       globals: globals.node,
     },

@@ -21,27 +21,54 @@ pnpm dev
 
 Opens at `http://localhost:5173`.
 
+## Local development
+
+Copy the example env file and fill in values:
+
+```sh
+cp .env.local.example .env.local
+# edit .env.local — set DEEPSEEK_API_KEY etc.
+```
+
+Run client and server in separate terminals:
+
+```sh
+# Terminal 1 — Vite client dev server (hot reload)
+pnpm dev:client
+
+# Terminal 2 — Express backend (auto-restart on changes)
+pnpm dev:server
+```
+
+- Client: `http://localhost:5173`
+- Server: `http://localhost:8787` (configurable via `PORT` env)
+- Healthcheck: `curl http://localhost:8787/healthz`
+
 ## Scripts
 
 | Command | Description |
 |---|---|
-| `pnpm dev` | Start dev server with hot module replacement |
-| `pnpm build` | Production build to `dist/` |
-| `pnpm preview` | Preview production build locally |
-| `pnpm typecheck` | TypeScript strict type check (no emit) |
-| `pnpm lint` | ESLint — zero warnings allowed |
+| `pnpm dev:client` | Start Vite client dev server with HMR |
+| `pnpm dev:server` | Start Express backend dev server (tsx watch) |
+| `pnpm build` | Production build — client (Vite) |
+| `pnpm --filter server build` | Production build — server (tsc → dist/) |
+| `pnpm preview` | Preview client production build locally |
+| `pnpm typecheck` | TypeScript strict type check — client |
+| `pnpm --filter server typecheck` | TypeScript strict type check — server |
+| `pnpm lint` | ESLint — zero warnings allowed (client + server) |
 | `pnpm format` | Prettier write |
-| `pnpm test` | Vitest test suite (single run) |
+| `pnpm test` | Vitest test suite — client |
+| `pnpm --filter server test` | Vitest test suite — server |
 
 ## CI
 
 GitHub Actions runs on push and PR to `develop`:
 
 1. `pnpm install --frozen-lockfile`
-2. `pnpm typecheck`
+2. `pnpm typecheck` + `pnpm --filter server typecheck`
 3. `pnpm lint`
-4. `pnpm test`
-5. `pnpm build` + bundle-size budget check (≤ 1.5 MB gzipped for all JS assets)
+4. `pnpm test` + `pnpm --filter server test`
+5. `pnpm build` + `pnpm --filter server build` + bundle-size budget check (≤ 1.5 MB gzipped for client JS)
 
 ## Tech stack
 

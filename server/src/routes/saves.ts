@@ -11,6 +11,57 @@ export const savesRouter = Router()
 
 const maxBytes = parseInt(process.env.SAVE_MAX_BYTES ?? String(SAVE_MAX_BYTES_DEFAULT), 10)
 
+// ---------------------------------------------------------------------------
+// GET /api/saves/me  — fetch latest save for the authenticated player
+// Query: ?slot=<n>  (default 0)
+// 200  { save_id, slot, version, payload, updated_at, client_clock_ms }
+// 204  no save for this player+slot
+// 401  unauthenticated
+// ---------------------------------------------------------------------------
+savesRouter.get('/me', (req: Request, res: Response): void => {
+  if (!req.player) {
+    res.status(401).json({ error: 'unauthorized' })
+    return
+  }
+
+  const slotRaw = req.query['slot']
+  const slot =
+    slotRaw === undefined || !Number.isInteger(Number(slotRaw)) || Number(slotRaw) < 0
+      ? 0
+      : Number(slotRaw)
+
+  res.setHeader('Cache-Control', 'no-store')
+
+  type SaveRow = {
+    save_id: string
+    slot: number
+    version: number
+    payload: string
+    updated_at: number
+    client_clock_ms: number
+  }
+
+  const row = getDb()
+    .prepare<[string, number]>(
+      'SELECT save_id, slot, version, payload, updated_at, client_clock_ms FROM saves WHERE player_id = ? AND slot = ?',
+    )
+    .get(req.player.id, slot) as SaveRow | undefined
+
+  if (!row) {
+    res.status(204).end()
+    return
+  }
+
+  res.json({
+    save_id: row.save_id,
+    slot: row.slot,
+    version: row.version,
+    payload: JSON.parse(row.payload) as unknown,
+    updated_at: row.updated_at,
+    client_clock_ms: row.client_clock_ms,
+  })
+})
+
 savesRouter.post('/', (req: Request, res: Response): void => {
   if (!req.player) {
     res.status(401).json({ error: 'unauthorized' })

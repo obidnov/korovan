@@ -129,3 +129,71 @@ describe('POST /api/saves', () => {
     expect(res.status).toBe(401)
   })
 })
+
+describe('GET /api/saves/me', () => {
+  const PLAYER_ID = 'a0000000-0000-4000-8000-000000000002'
+  let db: Database.Database
+
+  beforeEach(() => {
+    db = buildDb()
+    setDb(db)
+    seedPlayer(db, PLAYER_ID)
+  })
+
+  afterEach(() => {
+    closeDb()
+  })
+
+  it('player with no save → 204', async () => {
+    const res = await supertest(app)
+      .get('/api/saves/me')
+      .set('Cookie', makeCookie(PLAYER_ID))
+
+    expect(res.status).toBe(204)
+  })
+
+  it('player with save → 200 + full save body', async () => {
+    // seed a save directly
+    db.prepare(
+      'INSERT INTO saves (save_id, player_id, slot, version, payload, updated_at, client_clock_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('save-0001', PLAYER_ID, 0, 3, JSON.stringify({ hp: 75 }), 1000, 999)
+
+    const res = await supertest(app)
+      .get('/api/saves/me')
+      .set('Cookie', makeCookie(PLAYER_ID))
+
+    expect(res.status).toBe(200)
+    expect(res.body.save_id).toBe('save-0001')
+    expect(res.body.slot).toBe(0)
+    expect(res.body.version).toBe(3)
+    expect(res.body.payload).toMatchObject({ hp: 75 })
+    expect(res.body.updated_at).toBe(1000)
+    expect(res.body.client_clock_ms).toBe(999)
+  })
+
+  it('?slot=1 with no save at slot 1 → 204', async () => {
+    // seed slot 0
+    db.prepare(
+      'INSERT INTO saves (save_id, player_id, slot, version, payload, updated_at, client_clock_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('save-0002', PLAYER_ID, 0, 1, JSON.stringify({ hp: 100 }), 1000, 999)
+
+    const res = await supertest(app)
+      .get('/api/saves/me?slot=1')
+      .set('Cookie', makeCookie(PLAYER_ID))
+
+    expect(res.status).toBe(204)
+  })
+
+  it('missing cookie → 401', async () => {
+    const res = await supertest(app).get('/api/saves/me')
+    expect(res.status).toBe(401)
+  })
+
+  it('Cache-Control: no-store header set', async () => {
+    const res = await supertest(app)
+      .get('/api/saves/me')
+      .set('Cookie', makeCookie(PLAYER_ID))
+
+    expect(res.headers['cache-control']).toBe('no-store')
+  })
+})

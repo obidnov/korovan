@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from 'vitest'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse, delay } from 'msw'
 import { createDeepSeekProvider } from '../../src/llm/deepseek.js'
@@ -453,6 +453,62 @@ describe('HTTPS enforcement', () => {
     expect(() =>
       createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'not-a-url' }),
     ).toThrow()
+  })
+})
+
+// ─── NODE_ENV gate: loopback only allowed in test env (BOO-417 CSO rejection) ──
+// singleThread=true (vitest.config.ts): process.env mutations persist across files.
+// Use beforeEach/afterEach to capture+restore NODE_ENV around every test here.
+
+describe('HTTPS enforcement — loopback gate (NODE_ENV=test only)', () => {
+  let savedNodeEnv: string | undefined
+
+  beforeEach(() => {
+    savedNodeEnv = process.env.NODE_ENV
+  })
+
+  afterEach(() => {
+    if (savedNodeEnv === undefined) {
+      delete process.env.NODE_ENV
+    } else {
+      process.env.NODE_ENV = savedNodeEnv
+    }
+  })
+
+  it('rejects http://localhost when NODE_ENV=production', () => {
+    process.env.NODE_ENV = 'production'
+    let err: unknown
+    try {
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://localhost:11434' })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(LLMProviderError)
+    expect((err as LLMProviderError).code).toBe('auth')
+  })
+
+  it('rejects http://127.0.0.1 when NODE_ENV=development', () => {
+    process.env.NODE_ENV = 'development'
+    let err: unknown
+    try {
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://127.0.0.1:8080' })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(LLMProviderError)
+    expect((err as LLMProviderError).code).toBe('auth')
+  })
+
+  it('rejects http://[::1] when NODE_ENV is unset', () => {
+    delete process.env.NODE_ENV
+    let err: unknown
+    try {
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://[::1]:8080' })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(LLMProviderError)
+    expect((err as LLMProviderError).code).toBe('auth')
   })
 })
 

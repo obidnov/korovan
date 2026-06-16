@@ -52,7 +52,11 @@ export function createDeepSeekProvider(config: DeepSeekServerConfig): LLMProvide
     parsedUrl.hostname === 'localhost' ||
     parsedUrl.hostname === '127.0.0.1' ||
     parsedUrl.hostname === '[::1]'
-  if (parsedUrl.protocol !== 'https:' && !isLoopback) {
+  // Loopback HTTP allowed only in NODE_ENV=test (local mock servers for unit tests).
+  // In production/development, even loopback is rejected — a misconfigured
+  // http://localhost:… base URL leaks the API key to a co-tenanted process.
+  const isTestEnv = process.env.NODE_ENV === 'test'
+  if (parsedUrl.protocol !== 'https:' && !(isLoopback && isTestEnv)) {
     throw new LLMProviderError('auth', 'non-HTTPS baseUrl rejected')
   }
 

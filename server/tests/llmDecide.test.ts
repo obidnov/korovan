@@ -205,6 +205,27 @@ describe('POST /api/llm/decide', () => {
     expect(alertLog).toBeDefined()
   })
 
+  it('200 with fallback on unexpected-status (HTTP 422); CSO-alert log emitted', async () => {
+    // DeepSeek returns a 4xx that is neither auth (401/403) nor rate-limit (429).
+    // This signals schema/contract drift or misconfig — both warrant an alert.
+    fake.configure({ errorCode: 'unexpected-status', httpStatus: 422 })
+
+    const res = await request
+      .post('/api/llm/decide')
+      .set('Cookie', makeCookie())
+      .send({ faction: 'elves', snapshot: VALID_SNAPSHOT })
+
+    expect(res.status).toBe(200)
+    expect(res.body.source).toBe('fallback')
+
+    const alertLog = logs.find(
+      (l) => l['msg'] === 'llm-decide:provider-error' && l['alert'] === 'CSO-ALERT',
+    )
+    expect(alertLog).toBeDefined()
+    expect(alertLog?.['code']).toBe('unexpected-status')
+    expect(alertLog?.['httpStatus']).toBe(422)
+  })
+
   it('200 with fallback on schema-invalid output; no alert logged', async () => {
     // LLM returns command that fails AgentCommand schema validation
     const badOutput: DecideOutput = {

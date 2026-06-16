@@ -19,7 +19,10 @@ const _scripted = createScriptedProvider()
 const decideLimiter = createRateLimiter(ENDPOINT_PROFILES['POST /api/llm/decide'])
 
 function isAlertableError(code: string): boolean {
-  return code === 'provider-5xx' || code === 'auth' || code === 'network'
+  return code === 'provider-5xx'
+      || code === 'auth'
+      || code === 'network'
+      || code === 'unexpected-status' // schema drift / misconfig — both alert-worthy
 }
 
 export function registerLlmDecideRoute(router: Router, provider: LLMProvider): void {

@@ -40,6 +40,45 @@ function _windowStart(nowMs: number): number {
   return Math.floor(nowMs / WINDOW_MS) * WINDOW_MS
 }
 
+// --- Periodic sweeper (BOO-519) ---
+// Evicts entries whose window started more than 2 × WINDOW_MS ago (i.e. > 120 s old).
+// Prevents cardinality DoS via IP rotation: without eviction an attacker rotating IPs
+// at 100 RPS fills the Map with ~100 MB/million unique keys over hours → OOM.
+const SWEEP_INTERVAL_MS = 60_000
+const SWEEP_TTL_MS = 2 * WINDOW_MS
+
+function _sweep(nowMs: number): void {
+  const cutoff = nowMs - SWEEP_TTL_MS
+  for (const [key, entry] of _store) {
+    if (entry.windowStart < cutoff) {
+      _store.delete(key)
+    }
+  }
+}
+
+let _sweepTimer: ReturnType<typeof setInterval> | undefined = setInterval(
+  () => _sweep(Date.now()),
+  SWEEP_INTERVAL_MS,
+)
+// Prevent the timer from keeping the Node.js / test process alive.
+_sweepTimer.unref?.()
+
+/** Triggers one sweep pass immediately. Test helper — not for production use. */
+export function _runSweepNow(nowMs = Date.now()): void {
+  _sweep(nowMs)
+}
+
+/** Cancels the background sweeper interval. Use in test afterAll. */
+export function _stopSweeper(): void {
+  clearInterval(_sweepTimer)
+  _sweepTimer = undefined
+}
+
+/** Returns the current number of entries in the rate-limit store. Test helper. */
+export function _storeSize(): number {
+  return _store.size
+}
+
 /**
  * Check and increment the counter for a key.
  * Returns true if the request is within the limit, false if rate-limited.

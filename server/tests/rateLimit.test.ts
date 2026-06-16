@@ -3,6 +3,9 @@ import express, { type Express, Router } from 'express'
 import request from 'supertest'
 import {
   _resetStore,
+  _runSweepNow,
+  _stopSweeper,
+  _storeSize,
   checkAndIncrement,
   checkDailyBudget,
   createRateLimiter,
@@ -220,6 +223,59 @@ describe('createRateLimiter — per-IP limit', () => {
     }
     const res = await request(noPlayerHandle.server).post('/api/llm/decide').set('X-Forwarded-For', '5.5.5.5')
     expect(res.status).toBe(429)
+  })
+})
+
+// ─── sweeper — cardinality bound (BOO-519) ───────────────────────────────────
+//
+// Validates that the periodic sweeper evicts stale entries, keeping Map size
+// bounded under IP-rotation traffic patterns.
+
+describe('sweeper — cardinality bound', () => {
+  // Fixed timestamp avoids wall-clock window-boundary races.
+  const NOW = 1_800_000_000_000
+  const WINDOW_MS = 60_000
+
+  beforeEach(_resetStore)
+
+  afterAll(() => {
+    _stopSweeper()
+    _resetStore()
+  })
+
+  it('evicts 100 K stale entries and preserves ACTIVE entries after a sweep pass', () => {
+    const ACTIVE = 5
+
+    // Inject 100 K entries in a window > 2 × WINDOW_MS old — all should be swept.
+    // Use the loop index directly to guarantee 100 K distinct keys.
+    for (let i = 0; i < 100_000; i++) {
+      checkAndIncrement(`ip:synthetic-${i}:POST /api/test`, 30, NOW - 200_000)
+    }
+
+    // Inject ACTIVE entries in the current window — these must survive the sweep.
+    for (let i = 0; i < ACTIVE; i++) {
+      checkAndIncrement(`ip:192.168.0.${i}:POST /api/test`, 30, NOW)
+    }
+
+    expect(_storeSize()).toBe(100_000 + ACTIVE)
+
+    _runSweepNow(NOW)
+
+    expect(_storeSize()).toBeLessThanOrEqual(ACTIVE)
+  })
+
+  it('does not evict entries within the 2 × WINDOW_MS TTL', () => {
+    // Entry from exactly 1 window ago — within the 2-window TTL, must survive.
+    checkAndIncrement('ip:1.1.1.1:POST /api/test', 30, NOW - WINDOW_MS)
+    _runSweepNow(NOW)
+    expect(_storeSize()).toBe(1)
+  })
+
+  it('evicts entries whose windowStart is older than 2 × WINDOW_MS', () => {
+    // Entry from 3 windows ago — beyond the 2-window TTL, must be evicted.
+    checkAndIncrement('ip:2.2.2.2:POST /api/test', 30, NOW - 3 * WINDOW_MS - 1)
+    _runSweepNow(NOW)
+    expect(_storeSize()).toBe(0)
   })
 })
 

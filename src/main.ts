@@ -17,7 +17,7 @@ import { SOLDIER_SPAWNS } from './game/ai/soldierSpawns'
 import { createHpComponent } from './game/combat/hp'
 import { createMeleeWeapon } from './game/combat/meleeWeapon'
 import { createDeathScreen } from './game/combat/deathScreen'
-import { onDamageReceived, notifyDamageReceived } from './game/combat'
+import { onDamageReceived, notifyDamageReceived } from './game/combat/damageHub'
 import { swordSwing, hit, footsteps } from './audio/sounds'
 import { createCaravanFsm, CARAVAN_ROUTE, CARAVAN_INTERACT_RANGE } from './world/caravan'
 import { createCartEntity, buildCartMesh } from './game/caravan/cartEntity'
@@ -74,6 +74,10 @@ const settingsPanel = createSettingsPanel()
 
 // Apply persisted audio settings on boot
 applyAudioSettings(loadAudioSettings())
+
+// Register hit-sound handler once at module level so repeated startGame() calls
+// (New Game / Continue) do not accumulate duplicate subscriptions.
+onDamageReceived(() => hit.play())
 
 // ---------------------------------------------------------------------------
 // Main menu — shown immediately before game loads
@@ -186,10 +190,6 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   // -------------------------------------------------------------------------
   // Combat setup
   // -------------------------------------------------------------------------
-
-  onDamageReceived(() => {
-    hit.play()
-  })
 
   const playerHp = createHpComponent(PLAYER_MAX_HP)
   const deathScreen = createDeathScreen()

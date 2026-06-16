@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { onDamageReceived, notifyDamageReceived } from '../../src/game/combat'
+import { onDamageReceived, notifyDamageReceived } from '../../src/game/combat/damageHub'
 
 // Reset handler list between tests by unsubscribing all registered handlers.
 const unsubs: Array<() => void> = []

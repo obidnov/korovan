@@ -4,8 +4,8 @@
 # First-time setup (run once):
 #   brew install flyctl
 #   fly auth login
-#   fly launch --name korovan --region iad --no-deploy
-#   fly volumes create korovan_data --region iad --size 1
+#   fly launch --name korovan --region ams --no-deploy
+#   fly volumes create korovan_data --region ams --size 1
 #   fly secrets set DB_PATH=/data/korovan.db
 #   fly secrets set DEEPSEEK_API_KEY=<your_key>
 #   fly secrets set SESSION_SECRET=$(openssl rand -hex 32)
@@ -17,7 +17,7 @@
 #   curl https://korovan.fly.dev/healthz
 
 app = "korovan"
-primary_region = "iad"
+primary_region = "ams"
 
 [build]
   # Dockerfile must be at repo root (delivered by BOO-461).

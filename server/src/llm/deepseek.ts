@@ -8,11 +8,14 @@ import type {
   DecideOutput,
   PingResult,
   AgentCommand,
-  FactionId,
-  StrategicStateSnapshot,
 } from './types.js'
 import { LLMProviderError } from './types.js'
 import { AgentCommandSchema, AGENT_COMMAND_JSON_SCHEMA } from './schema.js'
+import {
+  SYSTEM_PROMPT,
+  serializeSnapshotForPrompt,
+  serializeCommandForHistory,
+} from './serialiser.js'
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com'
 const DEFAULT_MODEL = 'deepseek-chat'
@@ -60,7 +63,7 @@ export function createDeepSeekProvider(config: DeepSeekServerConfig): LLMProvide
 
     async decide(input: DecideInput): Promise<DecideOutput> {
       const history = parseHistory(input.sessionState.providerContext)
-      const userContent = serializeSnapshot(input.snapshot, input.faction)
+      const userContent = serializeSnapshotForPrompt(input.snapshot, input.faction)
       const messages = buildMessages(history, userContent)
 
       const raw = await fetchChatCompletion(
@@ -73,8 +76,9 @@ export function createDeepSeekProvider(config: DeepSeekServerConfig): LLMProvide
 
       const command = extractAndValidateCommand(raw)
 
-      // Append this turn to conversation history
-      const assistantContent = serializeCommand(command)
+      // Append this turn to conversation history (b-2 echo path — command already
+      // validated through AgentCommandSchema so idle.reason is sanitized)
+      const assistantContent = serializeCommandForHistory(command)
       const updatedHistory: ChatMessage[] = [
         ...history.slice(-MAX_HISTORY_TURNS * 2 + 2),
         { role: 'user', content: userContent },
@@ -160,37 +164,10 @@ function parseHistory(providerContext: unknown): ChatMessage[] {
 }
 
 function buildMessages(history: ChatMessage[], userContent: string): ChatMessage[] {
-  const system: ChatMessage = {
-    role: 'system',
-    content:
-      'You are a strategic AI commander in a medieval fantasy game.\n' +
-      'Analyse the game state and issue exactly ONE command using the issue_command tool.\n' +
-      'Available command kinds: patrol, ambush, retreat, idle.\n' +
-      '- patrol: send units on a patrol path (pathId, speed: slow|normal|fast)\n' +
-      '- ambush: set an ambush at a node (nodeId, durationSec: 1-300)\n' +
-      '- retreat: retreat to a safe node (nodeId)\n' +
-      '- idle: hold position (reason, max 128 chars)',
-  }
+  // SYSTEM_PROMPT from serialiser.ts includes the instruction-isolation clause
+  // (BOO-405 Layer 2: marks <gameState> as UNTRUSTED DATA).
+  const system: ChatMessage = { role: 'system', content: SYSTEM_PROMPT }
   return [system, ...history, { role: 'user', content: userContent }]
-}
-
-function serializeSnapshot(snapshot: StrategicStateSnapshot, faction: FactionId): string {
-  return JSON.stringify({
-    tick: snapshot.tickMs,
-    yourFaction: faction,
-    zones: snapshot.zones.map((z) => ({
-      id: z.zoneId,
-      controlledBy: z.controlledBy,
-      units: z.unitCount,
-      hasCaravan: z.hasCaravan,
-    })),
-    ownUnits: snapshot.ownUnits,
-    knownEnemies: snapshot.knownEnemies,
-  })
-}
-
-function serializeCommand(cmd: AgentCommand): string {
-  return JSON.stringify(cmd)
 }
 
 async function fetchChatCompletion(

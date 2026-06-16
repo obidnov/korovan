@@ -89,6 +89,34 @@ describe('checkAndIncrement', () => {
     expect(checkAndIncrement('keyA', 1)).toBe(false)
     expect(checkAndIncrement('keyB', 1)).toBe(true) // different key
   })
+
+  it('sliding-window: N at end-of-window + N at start-of-next stays near N total (BOO-518)', () => {
+    // Fixed-window bug: N requests at t=59.9 s then N at t=60.1 s → 2N pass through
+    // because the counter resets at the boundary. Sliding-window fix weights the
+    // previous window's count by its overlap fraction — at 100 ms into the new window
+    // that weight is ≈0.9983, leaving effective ≈ N−0.05, budget for ≤1 extra.
+    const LIMIT = 30
+    const WS = 60_000 * 1_000 // arbitrary window-aligned epoch base
+    const t0 = WS + 59_900    // 59.9 s into window W  (near end)
+    const t1 = WS + 60_100    // 0.1 s into window W+1 (near start of next)
+
+    // First wave: all LIMIT requests pass
+    let ok0 = 0
+    for (let i = 0; i < LIMIT; i++) {
+      if (checkAndIncrement('burst-boundary', LIMIT, t0)) ok0++
+    }
+    expect(ok0).toBe(LIMIT)
+
+    // Second wave 200 ms later, straddling the window boundary.
+    // Fixed-window would allow LIMIT more (total 2×LIMIT = 60).
+    // Sliding-window: effective ≈ 29.95 at t1 → at most 1 request slips through.
+    let ok1 = 0
+    for (let i = 0; i < LIMIT; i++) {
+      if (checkAndIncrement('burst-boundary', LIMIT, t1)) ok1++
+    }
+    expect(ok1).toBeLessThanOrEqual(2) // ≤1 by arithmetic; allow 2 for float margin
+    expect(ok0 + ok1).toBeLessThan(LIMIT * 2) // far below the fixed-window 2× burst
+  })
 })
 
 // ─── per-identity rate limit ──────────────────────────────────────────────────

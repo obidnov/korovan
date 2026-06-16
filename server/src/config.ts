@@ -4,10 +4,10 @@
  */
 export function validateStartupConfig(): void {
   const secret = process.env.COOKIE_SIGNING_SECRET ?? ''
-  if (Buffer.byteLength(secret, 'utf8') < 32) {
+  if (secret.length < 64) {
     throw new Error(
-      'COOKIE_SIGNING_SECRET must be at least 32 bytes. ' +
-        'Set it to a cryptographically random string of ≥32 characters.',
+      'COOKIE_SIGNING_SECRET must be at least 64 hex characters (= 32 bytes). ' +
+        'Generate with: openssl rand -hex 32',
     )
   }
 }

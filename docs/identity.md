@@ -47,7 +47,8 @@ HMAC-SHA256(key=COOKIE_SIGNING_SECRET, message=player_id)
 ```
 
 - `COOKIE_SIGNING_SECRET` is a server-only env var — never shipped to the client.
-- Minimum secret length: 32 bytes (256 bits). Reject on startup if shorter.
+- Minimum secret length: **64 hex characters (= 32 bytes / 256 bits)**. Reject on startup if shorter.
+  Generate with: `openssl rand -hex 32` (outputs exactly 64 lowercase hex characters).
 - Validation must use **constant-time comparison** (`crypto.timingSafeEqual`) to prevent timing attacks.
 
 ---

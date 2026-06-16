@@ -18,6 +18,7 @@ import { createHpComponent } from './game/combat/hp'
 import { createMeleeWeapon } from './game/combat/meleeWeapon'
 import { createDeathScreen } from './game/combat/deathScreen'
 import { onDamageReceived, notifyDamageReceived } from './game/combat/damageHub'
+import { computeHitCenter } from './game/combat/hitResolution'
 import { swordSwing, hit, footsteps } from './audio/sounds'
 import { createCaravanFsm, CARAVAN_ROUTE, CARAVAN_INTERACT_RANGE } from './world/caravan'
 import { createCartEntity, buildCartMesh } from './game/caravan/cartEntity'
@@ -421,12 +422,11 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     if (hitThisFrame) {
       swordSwing.play()
 
-      const facingY = playerMesh.rotation.y
-      const fwdX = Math.sin(facingY)
-      const fwdZ = Math.cos(facingY)
-      const hitCX = playerPos.x + fwdX * PLAYER_HIT_REACH
-      const hitCY = playerPos.y
-      const hitCZ = playerPos.z + fwdZ * PLAYER_HIT_REACH
+      const { x: hitCX, y: hitCY, z: hitCZ } = computeHitCenter(
+        playerPos,
+        thirdPersonCam.yaw,
+        PLAYER_HIT_REACH,
+      )
       const rSq = PLAYER_HIT_RADIUS * PLAYER_HIT_RADIUS
 
       let didHit = false

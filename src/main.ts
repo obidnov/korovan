@@ -17,6 +17,7 @@ import { SOLDIER_SPAWNS } from './game/ai/soldierSpawns'
 import { createHpComponent } from './game/combat/hp'
 import { createMeleeWeapon } from './game/combat/meleeWeapon'
 import { createDeathScreen } from './game/combat/deathScreen'
+import { onDamageReceived, notifyDamageReceived } from './game/combat'
 import { swordSwing, hit, footsteps } from './audio/sounds'
 import { createCaravanFsm, CARAVAN_ROUTE, CARAVAN_INTERACT_RANGE } from './world/caravan'
 import { createCartEntity, buildCartMesh } from './game/caravan/cartEntity'
@@ -185,6 +186,10 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   // -------------------------------------------------------------------------
   // Combat setup
   // -------------------------------------------------------------------------
+
+  onDamageReceived(() => {
+    hit.play()
+  })
 
   const playerHp = createHpComponent(PLAYER_MAX_HP)
   const deathScreen = createDeathScreen()
@@ -450,7 +455,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
         }
       }
 
-      if (didHit) hit.play()
+      if (didHit) notifyDamageReceived()
     }
 
     // -----------------------------------------------------------------------
@@ -474,7 +479,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
 
       if (soldierSwingsNow && !playerHp.isDead && !isRespawning) {
         playerHp.takeDamage(SOLDIER_MELEE_DAMAGE)
-        hit.play()
+        notifyDamageReceived()
       }
 
       if (soldier.fsm.getSnapshot().shouldRemove) {
@@ -514,7 +519,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
 
       if (escortSwingsNow && !playerHp.isDead && !isRespawning) {
         playerHp.takeDamage(ESCORT_MELEE_DAMAGE)
-        hit.play()
+        notifyDamageReceived()
       }
 
       if (escort.fsm.getSnapshot().shouldRemove) {

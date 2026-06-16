@@ -17,18 +17,26 @@ describe('validateStartupConfig', () => {
     expect(() => validateStartupConfig()).toThrow(/COOKIE_SIGNING_SECRET/)
   })
 
-  it('throws when COOKIE_SIGNING_SECRET is shorter than 32 bytes', () => {
-    process.env.COOKIE_SIGNING_SECRET = 'a'.repeat(31)
-    expect(() => validateStartupConfig()).toThrow(/32 bytes/)
+  it('throws when COOKIE_SIGNING_SECRET is shorter than 64 hex characters', () => {
+    process.env.COOKIE_SIGNING_SECRET = 'a'.repeat(63)
+    expect(() => validateStartupConfig()).toThrow(/64 hex characters/)
   })
 
-  it('passes when COOKIE_SIGNING_SECRET is exactly 32 bytes', () => {
-    process.env.COOKIE_SIGNING_SECRET = 'a'.repeat(32)
+  it('passes when COOKIE_SIGNING_SECRET is exactly 64 hex characters', () => {
+    process.env.COOKIE_SIGNING_SECRET = 'a'.repeat(64)
     expect(() => validateStartupConfig()).not.toThrow()
   })
 
-  it('passes when COOKIE_SIGNING_SECRET is longer than 32 bytes', () => {
-    process.env.COOKIE_SIGNING_SECRET = 'x'.repeat(64)
+  it('passes when COOKIE_SIGNING_SECRET is longer than 64 hex characters', () => {
+    process.env.COOKIE_SIGNING_SECRET = 'x'.repeat(128)
+    expect(() => validateStartupConfig()).not.toThrow()
+  })
+
+  it('passes with openssl rand -hex 32 output format (64 lowercase hex chars)', () => {
+    // Simulate the output of `openssl rand -hex 32`: 64 lowercase hex characters.
+    const opensslOutput = 'a3f8c2d14e7b6059281f3ad09c74be516e82f30d97c1504ab2e68f7d5039c14b'
+    expect(opensslOutput).toHaveLength(64)
+    process.env.COOKIE_SIGNING_SECRET = opensslOutput
     expect(() => validateStartupConfig()).not.toThrow()
   })
 })

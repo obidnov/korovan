@@ -16,11 +16,12 @@ export default defineConfig({
       threads: { singleThread: true },
     },
     env: {
-      // cookieAuth (BOO-470) throws at module-load if secret is absent or < 32 chars.
-      // Set a fixed test value so app.ts can be imported by all test files.
+      // cookieAuth (BOO-470/498) throws at module-load if secret is absent or < 64 chars.
+      // 64 lowercase hex chars = 32 bytes (openssl rand -hex 32 output format).
+      // Set a fixed 64-hex-char test value so app.ts can be imported by all test files.
       // IMPORTANT: do NOT override this in test files (even temporarily) without restoring
       // it in afterEach — with singleThread, env mutations persist across file evaluations.
-      COOKIE_SIGNING_SECRET: 'test-signing-secret-min-32-bytes!!',
+      COOKIE_SIGNING_SECRET: 'deadbeefcafebabe0123456789abcdeffedcba9876543210deadbeefcafebabe',
     },
   },
 })

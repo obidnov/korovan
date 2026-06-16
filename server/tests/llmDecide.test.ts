@@ -13,7 +13,7 @@ import { listen, type ListenHandle } from './helpers/listen'
 // Test helpers
 // ---------------------------------------------------------------------------
 
-const COOKIE_SECRET = 'test-secret-at-least-32-characters-long'
+const COOKIE_SECRET = 'deadbeefcafebabe0123456789abcdeffedcba9876543210deadbeefcafebabe'
 const TEST_PLAYER_ID = '550e8400-e29b-41d4-a716-446655440000'
 
 // Mock player loader — avoids SQLite dependency in EP-3 tests.

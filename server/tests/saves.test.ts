@@ -10,7 +10,8 @@ import { listen, type ListenHandle } from './helpers/listen'
 import { _resetStore } from '../src/middleware/rateLimit'
 
 // TEST_SECRET must match the value set in vitest.config.ts COOKIE_SIGNING_SECRET env.
-const TEST_SECRET = 'test-signing-secret-min-32-bytes!!'
+// 64 hex chars = 32 bytes (openssl rand -hex 32 format). Updated in BOO-498.
+const TEST_SECRET = 'deadbeefcafebabe0123456789abcdeffedcba9876543210deadbeefcafebabe'
 
 function makeCookie(playerId: string): string {
   const sig = createHmac('sha256', TEST_SECRET).update(playerId).digest('hex')

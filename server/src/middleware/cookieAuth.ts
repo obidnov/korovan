@@ -55,8 +55,10 @@ export function cookieAuth(
   loadPlayer: PlayerLoader,
   secret: string,
 ): (req: Request, res: Response, next: NextFunction) => void {
-  if (!secret || secret.length < 32) {
-    throw new Error('COOKIE_SIGNING_SECRET must be at least 32 characters')
+  if (!secret || secret.length < 64) {
+    throw new Error(
+      'COOKIE_SIGNING_SECRET must be at least 64 hex characters (= 32 bytes). Generate with: openssl rand -hex 32',
+    )
   }
 
   return function cookieAuthMiddleware(

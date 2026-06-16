@@ -17,6 +17,7 @@ import { SOLDIER_SPAWNS } from './game/ai/soldierSpawns'
 import { createHpComponent } from './game/combat/hp'
 import { createMeleeWeapon } from './game/combat/meleeWeapon'
 import { createDeathScreen } from './game/combat/deathScreen'
+import { onDamageReceived, notifyDamageReceived } from './game/combat/damageHub'
 import { swordSwing, hit, footsteps } from './audio/sounds'
 import { createCaravanFsm, CARAVAN_ROUTE, CARAVAN_INTERACT_RANGE } from './world/caravan'
 import { createCartEntity, buildCartMesh } from './game/caravan/cartEntity'
@@ -31,6 +32,7 @@ import { saveGame, loadGame } from './persistence/save'
 import { validateSaveV1, type SaveV1 } from './save/schema'
 import { startSceneAudio, type SceneAudioHandle } from './audio/sceneAudio'
 import { createFootstepsController } from './audio/footstepsController'
+import { spawnForest } from './world/forest'
 
 // ---------------------------------------------------------------------------
 // One-time localStorage migration: remove legacy client-side provider keys
@@ -72,6 +74,10 @@ const settingsPanel = createSettingsPanel()
 
 // Apply persisted audio settings on boot
 applyAudioSettings(loadAudioSettings())
+
+// Register hit-sound handler once at module level so repeated startGame() calls
+// (New Game / Continue) do not accumulate duplicate subscriptions.
+onDamageReceived(() => hit.play())
 
 // ---------------------------------------------------------------------------
 // Main menu — shown immediately before game loads
@@ -125,6 +131,42 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
 
   const { world, step } = await createPhysics()
   addStaticGround(world)
+
+  // ── Forest LOD ───────────────────────────────────────────────────────────
+  // Load tree.glb + tree-billboard.png in parallel, then spawn the forest.
+  const [treeGLTF, billboardTex] = await Promise.all([
+    loadGLTF('/assets/tree.glb'),
+    new Promise<THREE.Texture>((resolve, reject) => {
+      new THREE.TextureLoader().load('/assets/tree-billboard.png', resolve, undefined, reject)
+    }),
+  ])
+
+  // Extract the first Mesh geometry + material from the GLB scene.
+  let treeGeo: THREE.BufferGeometry | undefined
+  let treeMat: THREE.Material | undefined
+  treeGLTF.scene.traverse((obj) => {
+    if (!treeGeo && obj instanceof THREE.Mesh) {
+      treeGeo = obj.geometry as THREE.BufferGeometry
+      treeMat = obj.material as THREE.Material
+    }
+  })
+  if (!treeGeo || !treeMat) throw new Error('tree.glb contains no mesh')
+
+  const forest = spawnForest({
+    scene,
+    camera,
+    treeGeometry: treeGeo,
+    treeMaterial: treeMat,
+    billboardTexture: billboardTex,
+    treeCount: 6_000,
+    worldRadius: 200,
+    nearRadius: 60,
+    hysteresis: 5,
+    nearBudget: 500,
+    farBudget: 5_000,
+    seed: 0xb33f,
+    showOverlay: true,
+  })
 
   spawnHouses(scene, world).catch(console.error)
 
@@ -413,7 +455,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
         }
       }
 
-      if (didHit) hit.play()
+      if (didHit) notifyDamageReceived()
     }
 
     // -----------------------------------------------------------------------
@@ -437,7 +479,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
 
       if (soldierSwingsNow && !playerHp.isDead && !isRespawning) {
         playerHp.takeDamage(SOLDIER_MELEE_DAMAGE)
-        hit.play()
+        notifyDamageReceived()
       }
 
       if (soldier.fsm.getSnapshot().shouldRemove) {
@@ -477,7 +519,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
 
       if (escortSwingsNow && !playerHp.isDead && !isRespawning) {
         playerHp.takeDamage(ESCORT_MELEE_DAMAGE)
-        hit.play()
+        notifyDamageReceived()
       }
 
       if (escort.fsm.getSnapshot().shouldRemove) {
@@ -511,6 +553,9 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
       inventory.add({ id: LOOT_WOOD, qty: 5 })
       inventory.add({ id: LOOT_IRON_ORE, qty: 2 })
     }
+
+    // Forest LOD update — must run before render so instance matrices are fresh
+    forest.update()
 
     renderer.render(scene, camera)
 

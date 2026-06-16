@@ -21,22 +21,19 @@ All assets in this directory are released under [Creative Commons Zero (CC0 1.0 
 
 ---
 
-## Audio
+## Audio (WAV)
 
-Placeholder WAV files in `audio/` are silent stubs for development.
-Replace with CC0 sounds from the sources below before any public release.
+All audio files are CC0. Converted to 44100 Hz mono WAV from source OGG using ffmpeg.
 
-### Recommended Kenney packs (all CC0 / public domain)
+| File | Description | Source pack | Source file | License |
+|------|-------------|-------------|-------------|---------|
+| `audio/footsteps.wav` | Single footstep on grass | [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds) | `footstep_grass_000.ogg` | CC0 |
+| `audio/sword-swing.wav` | Blade/knife slice swing | [Kenney RPG Audio](https://kenney.nl/assets/rpg-audio) | `knifeSlice.ogg` | CC0 |
+| `audio/hit.wav` | Heavy metal impact / hit | [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds) | `impactMetal_heavy_000.ogg` | CC0 |
+| `audio/forest-ambient.wav` | 30 s looping ambient drone | Generated CC0 — ffmpeg pink-noise lowpass (kenney.nl/assets/ambient-sounds is no longer available) | n/a | CC0 |
 
-| Sound | Pack | File to use |
-|---|---|---|
-| `footsteps.wav` | [RPG Audio](https://kenney.nl/assets/rpg-audio) | footstep on grass/dirt |
-| `sword-swing.wav` | [RPG Audio](https://kenney.nl/assets/rpg-audio) | sword swing |
-| `hit.wav` | [Impact Sounds](https://kenney.nl/assets/impact-sounds) | impact / hit effect |
-| `forest-ambient.wav` | [Ambient Sounds](https://kenney.nl/assets/ambient-sounds) | forest loop |
-
-Credit line for release: "Audio assets from kenney.nl (CC0 / public domain)"
+Credit line: "Sound effects from kenney.nl (CC0 / public domain)"
 
 ---
 
-> **Next step (P1):** Replace these placeholder meshes and audio stubs with production-quality CC0 assets from the sources above once art direction (BOO-378) is finalised.
+> **Next step (P1):** Replace these placeholder meshes with production-quality CC0 models from the sources above once art direction (BOO-378) is finalised.

@@ -23,16 +23,23 @@ export const ENDPOINT_PROFILES: Record<string, RateLimitProfile> = {
   'POST /api/identity/bootstrap': { identityPerMin: 10, ipPerMin: 30 },
 }
 
-// --- Fixed-window counter ---
-// Key: `${identity|ip}:${path}`, value: { count, windowStart }
+// --- Sliding-window counter (smooth approximation) ---
+// Key: `${identity|ip}:${path}`, value: { prevCount, currentCount, windowStart }
+// Effective rate = prevCount × (1 − elapsed/WINDOW_MS) + currentCount, where
+// elapsed is how far into the current 60-s fixed window we are. This eliminates
+// the 2× boundary burst of a plain fixed-window algorithm (attacker sending N
+// requests at the end of window W and N more at the start of W+1 could previously
+// pass 2N through; now at most ~1 extra slips past the boundary).
+// O(1) memory per key; approximation error ≤ ~1 request near window boundaries.
 // Resets on process restart (acceptable for MVP; multi-instance store in P2).
 
-interface WindowEntry {
-  count: number
-  windowStart: number // unix ms rounded to start of 60-s window
+interface SlidingWindowEntry {
+  prevCount: number    // requests counted in the previous 60-s window
+  currentCount: number // requests counted in the current 60-s window
+  windowStart: number  // epoch ms floored to the start of the current 60-s window
 }
 
-const _store = new Map<string, WindowEntry>()
+const _store = new Map<string, SlidingWindowEntry>()
 
 const WINDOW_MS = 60_000
 
@@ -80,21 +87,36 @@ export function _storeSize(): number {
 }
 
 /**
- * Check and increment the counter for a key.
+ * Check and increment the counter for a key using a sliding-window approximation.
+ * Effective rate = prevCount × (1 − elapsed/WINDOW_MS) + currentCount.
  * Returns true if the request is within the limit, false if rate-limited.
  */
 export function checkAndIncrement(key: string, limit: number, nowMs = Date.now()): boolean {
   const ws = _windowStart(nowMs)
-  const entry = _store.get(key)
+  const elapsed = nowMs - ws
 
-  if (!entry || entry.windowStart !== ws) {
-    _store.set(key, { count: 1, windowStart: ws })
-    return true
+  const entry = _store.get(key)
+  let prevCount = 0
+  let currentCount = 0
+
+  if (entry) {
+    if (entry.windowStart === ws) {
+      prevCount = entry.prevCount
+      currentCount = entry.currentCount
+    } else if (entry.windowStart === ws - WINDOW_MS) {
+      // Window just rolled: previous current becomes prev, current resets.
+      prevCount = entry.currentCount
+    }
+    // More than one window ago → both default to 0 (no overlap with sliding window).
   }
-  if (entry.count >= limit) {
+
+  const effective = prevCount * (1 - elapsed / WINDOW_MS) + currentCount
+  if (effective >= limit) {
     return false
   }
-  entry.count++
+
+  currentCount++
+  _store.set(key, { prevCount, currentCount, windowStart: ws })
   return true
 }
 

@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express'
 import cookieParser from 'cookie-parser'
 import { randomUUID } from 'crypto'
 import { accessSync, constants } from 'node:fs'
-import { logger, redactRecord } from './logger'
+import { logger } from './logger'
 import { identityRouter } from './routes/identity'
 import { cookieAuth } from './middleware/cookieAuth'
 import { createRateLimiter, ENDPOINT_PROFILES } from './middleware/rateLimit'
@@ -66,9 +66,6 @@ export function createApp(
 
     res.on('finish', () => {
       const req = _req
-      const headers = redactRecord(
-        req.headers as Record<string, unknown>,
-      )
       logger.info({
         msg: 'request',
         method: req.method,
@@ -76,7 +73,7 @@ export function createApp(
         status: res.statusCode,
         ms: Date.now() - start,
         reqId,
-        headers,
+        headers: req.headers as Record<string, unknown>,
       })
     })
 

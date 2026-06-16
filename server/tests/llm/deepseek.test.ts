@@ -410,19 +410,49 @@ describe('decide() — auth errors', () => {
   })
 })
 
-// ─── HTTPS enforcement ────────────────────────────────────────────────────────
+// ─── HTTPS enforcement + loopback carve-out (BOO-417) ────────────────────────
 
 describe('HTTPS enforcement', () => {
-  it('throws at construction time on http:// base URL', () => {
-    expect(() =>
-      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://api.deepseek.com' }),
-    ).toThrow(/HTTPS/i)
+  it('throws LLMProviderError(auth) at construction time on non-HTTPS non-loopback URL', () => {
+    let err: unknown
+    try {
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://api.deepseek.com' })
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(LLMProviderError)
+    expect((err as LLMProviderError).code).toBe('auth')
+    expect((err as LLMProviderError).message).toBe('non-HTTPS baseUrl rejected')
   })
 
   it('accepts https:// base URL', () => {
     expect(() =>
       createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com' }),
     ).not.toThrow()
+  })
+
+  it('allows http://localhost (Ollama-style local endpoint)', () => {
+    expect(() =>
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://localhost:11434' }),
+    ).not.toThrow()
+  })
+
+  it('allows http://127.0.0.1 (loopback IPv4)', () => {
+    expect(() =>
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://127.0.0.1:8080' }),
+    ).not.toThrow()
+  })
+
+  it('allows http://[::1] (loopback IPv6)', () => {
+    expect(() =>
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://[::1]:8080' }),
+    ).not.toThrow()
+  })
+
+  it('throws on malformed base URL', () => {
+    expect(() =>
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'not-a-url' }),
+    ).toThrow()
   })
 })
 

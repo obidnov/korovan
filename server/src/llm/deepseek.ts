@@ -45,10 +45,15 @@ export function createDeepSeekProvider(config: DeepSeekServerConfig): LLMProvide
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = config
 
-  if (!baseUrl.toLowerCase().startsWith('https://')) {
-    throw new Error(
-      'DeepSeek adapter requires an HTTPS base URL to prevent API key exposure over plaintext',
-    )
+  // Parse early: surfaces malformed URLs as TypeError, handles mixed-case HTTPS:// and trailing whitespace.
+  const parsedUrl = new URL(baseUrl)
+  // WHATWG URL returns '[::1]' (with brackets) for IPv6 literals.
+  const isLoopback =
+    parsedUrl.hostname === 'localhost' ||
+    parsedUrl.hostname === '127.0.0.1' ||
+    parsedUrl.hostname === '[::1]'
+  if (parsedUrl.protocol !== 'https:' && !isLoopback) {
+    throw new LLMProviderError('auth', 'non-HTTPS baseUrl rejected')
   }
 
   if (!apiKey || apiKey.trim() === '') {

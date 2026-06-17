@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import express, { type Express, Router } from 'express'
 import request from 'supertest'
 import {
@@ -9,9 +9,11 @@ import {
   checkAndIncrement,
   checkDailyBudget,
   createRateLimiter,
+  resolveEnvCap,
   retryAfterSeconds,
   type DailyBudgetStore,
 } from '../src/middleware/rateLimit'
+import { logger, type LogLine } from '../src/logger'
 import { listen, type ListenHandle } from './helpers/listen'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -417,5 +419,127 @@ describe('createRateLimiter — cross-endpoint counter isolation', () => {
     expect(
       (await request(xEnpHandle.server).post('/api/leaderboard').set('X-Forwarded-For', IP)).status,
     ).toBe(429)
+  })
+})
+
+// ─── resolveEnvCap (BOO-567) ─────────────────────────────────────────────────
+//
+// Operator-facing env override path for the /api/llm/decide cap. The Wave B
+// rollout decision rule (PLAN.md §11) raises LLM_DECIDE_IP_RPM from 30 → 40-50
+// without a redeploy if benign-429 rate exceeds 2%, so the parser must be
+// strict (reject NaN, ≤0, empty) and silently fall back to the safe default.
+
+describe('resolveEnvCap (BOO-567)', () => {
+  const VAR = 'LLM_DECIDE_IP_RPM_TEST'
+
+  afterEach(() => {
+    delete process.env[VAR]
+  })
+
+  it('returns default when env var is unset', () => {
+    delete process.env[VAR]
+    expect(resolveEnvCap(VAR, 30)).toBe(30)
+  })
+
+  it('returns default when env var is empty string', () => {
+    process.env[VAR] = ''
+    expect(resolveEnvCap(VAR, 30)).toBe(30)
+  })
+
+  it('parses a positive integer override', () => {
+    process.env[VAR] = '45'
+    expect(resolveEnvCap(VAR, 30)).toBe(45)
+  })
+
+  it('floors a positive float', () => {
+    process.env[VAR] = '42.7'
+    expect(resolveEnvCap(VAR, 30)).toBe(42)
+  })
+
+  it('falls back to default on NaN', () => {
+    process.env[VAR] = 'not-a-number'
+    expect(resolveEnvCap(VAR, 30)).toBe(30)
+  })
+
+  it('falls back to default on zero', () => {
+    process.env[VAR] = '0'
+    expect(resolveEnvCap(VAR, 30)).toBe(30)
+  })
+
+  it('falls back to default on negative', () => {
+    process.env[VAR] = '-5'
+    expect(resolveEnvCap(VAR, 30)).toBe(30)
+  })
+})
+
+// ─── 429 structured-log telemetry (BOO-567) ──────────────────────────────────
+//
+// Wave B rollout decision rule needs per-IP vs per-identity tagging on every
+// 429 from /api/llm/decide so the benign-429 (per-IP NOT preceded by per-identity)
+// hourly rate can be measured. The trigger field is the decisive signal — assert
+// it lands at both decision paths.
+
+describe('rate_limit.429 structured log (BOO-567)', () => {
+  let ipHandle: ListenHandle
+  let identityHandle: ListenHandle
+  let lines: LogLine[]
+
+  beforeAll(() => {
+    // Per-IP trigger: IP cap is the binding limit. identityPerMin large so it
+    // never bites first.
+    ipHandle = listen(makeApp(1000, 1, 'player-log-ip'))
+    // Per-identity trigger: identity cap binds first.
+    identityHandle = listen(makeApp(1, 1000, 'player-log-id'))
+  })
+
+  afterAll(async () => {
+    await ipHandle.close()
+    await identityHandle.close()
+  })
+
+  beforeEach(() => {
+    _resetStore()
+    lines = []
+    logger.sink = (line) => lines.push(line)
+  })
+
+  afterEach(() => {
+    logger.sink = null
+  })
+
+  it('logs trigger=ip with path/ip/limit when per-IP cap fires first', async () => {
+    const IP = '203.0.113.1'
+    // First call passes; second exceeds the per-IP cap of 1.
+    await request(ipHandle.server).post('/api/llm/decide').set('X-Forwarded-For', IP)
+    const res = await request(ipHandle.server).post('/api/llm/decide').set('X-Forwarded-For', IP)
+    expect(res.status).toBe(429)
+
+    const rate429s = lines.filter((l) => l.event === 'rate_limit.429')
+    expect(rate429s).toHaveLength(1)
+    expect(rate429s[0].trigger).toBe('ip')
+    expect(rate429s[0].method).toBe('POST')
+    expect(rate429s[0].path).toBe('POST /api/llm/decide')
+    expect(rate429s[0].ip).toBe(IP)
+    expect(rate429s[0].limit).toBe(1)
+    expect(rate429s[0].level).toBe('warn')
+  })
+
+  it('logs trigger=identity with playerId when per-identity cap fires first', async () => {
+    const IP = '203.0.113.2'
+    await request(identityHandle.server).post('/api/llm/decide').set('X-Forwarded-For', IP)
+    const res = await request(identityHandle.server).post('/api/llm/decide').set('X-Forwarded-For', IP)
+    expect(res.status).toBe(429)
+
+    const rate429s = lines.filter((l) => l.event === 'rate_limit.429')
+    expect(rate429s).toHaveLength(1)
+    expect(rate429s[0].trigger).toBe('identity')
+    expect(rate429s[0].playerId).toBe('player-log-id')
+    expect(rate429s[0].ip).toBe(IP)
+    expect(rate429s[0].limit).toBe(1)
+  })
+
+  it('does not emit a 429 log line for 200 responses', async () => {
+    await request(ipHandle.server).post('/api/llm/decide').set('X-Forwarded-For', '203.0.113.3')
+    expect(lines.filter((l) => l.event === 'rate_limit.429')).toHaveLength(0)
   })
 })

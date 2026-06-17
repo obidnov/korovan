@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import { randomUUID } from 'crypto'
 import { getDb } from '../db'
 import { sanitizeNickname } from '../sanitizer'
@@ -19,6 +19,9 @@ const router = Router()
 
 // bootstrapLimiter is first — cookieAuth is intentionally absent; per-IP rate limiting must reach all anonymous requests.
 const bootstrapLimiter = createRateLimiter(ENDPOINT_PROFILES['POST /api/identity/bootstrap'])
+
+// patchMeLimiter runs after auth so req.playerId is populated for per-identity keying.
+const patchMeLimiter = createRateLimiter(ENDPOINT_PROFILES['PATCH /api/identity/me'])
 
 router.post('/api/identity/bootstrap', bootstrapLimiter, (req: Request, res: Response): void => {
   const db = getDb()
@@ -61,5 +64,52 @@ router.post('/api/identity/bootstrap', bootstrapLimiter, (req: Request, res: Res
   setCookie(res, playerId)
   res.json({ player_id: playerId, nickname })
 })
+
+// Auth guard: verifies cookie + player existence, sets req.playerId for rate limiter.
+// Does NOT create a player — returns 401 for any unauthenticated state.
+function requireBootstrappedPlayer(req: Request, res: Response, next: NextFunction): void {
+  const rawCookie: string | undefined = req.cookies?.[COOKIE_NAME]
+  if (!rawCookie) {
+    res.status(401).json({ error: 'not_bootstrapped' })
+    return
+  }
+  const playerId = verifyCookieValue(rawCookie)
+  if (!playerId) {
+    res.status(401).json({ error: 'not_bootstrapped' })
+    return
+  }
+  const player = getDb()
+    .prepare('SELECT player_id FROM players WHERE player_id = ?')
+    .get(playerId) as { player_id: string } | undefined
+  if (!player) {
+    res.status(401).json({ error: 'not_bootstrapped' })
+    return
+  }
+  req.playerId = playerId
+  next()
+}
+
+router.patch(
+  '/api/identity/me',
+  requireBootstrappedPlayer,
+  patchMeLimiter,
+  (req: Request, res: Response): void => {
+    const rawNickname: unknown = req.body?.nickname
+    if (typeof rawNickname !== 'string') {
+      res.status(400).json({ error: 'invalid_nickname' })
+      return
+    }
+    const nickname = sanitizeNickname(rawNickname)
+    if (nickname === null) {
+      res.status(400).json({ error: 'invalid_nickname' })
+      return
+    }
+    const playerId = req.playerId!
+    getDb()
+      .prepare('UPDATE players SET nickname = ?, last_seen_at = ? WHERE player_id = ?')
+      .run(nickname, Date.now(), playerId)
+    res.json({ player_id: playerId, nickname })
+  },
+)
 
 export { router as identityRouter }

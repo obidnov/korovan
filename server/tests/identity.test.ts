@@ -306,3 +306,154 @@ describe('POST /api/identity/bootstrap', () => {
     })
   })
 })
+
+describe('PATCH /api/identity/me', () => {
+  let handle: ListenHandle
+
+  beforeAll(() => {
+    handle = listen(app)
+  })
+
+  afterAll(async () => {
+    await handle.close()
+  })
+
+  beforeEach(() => {
+    setDb(openDb(':memory:'))
+    _resetStore()
+  })
+
+  afterEach(() => {
+    closeDb()
+  })
+
+  async function createPlayer(nickname = 'OldNick'): Promise<{ player_id: string; cookieHeader: string }> {
+    const res = await supertest(handle.server).post('/api/identity/bootstrap').send({ nickname })
+    const { player_id } = res.body as { player_id: string }
+    return { player_id, cookieHeader: makeValidCookieHeader(player_id) }
+  }
+
+  describe('happy path', () => {
+    it('returns 200 with updated player_id and nickname', async () => {
+      const { player_id, cookieHeader } = await createPlayer()
+      const res = await supertest(handle.server)
+        .patch('/api/identity/me')
+        .set('Cookie', cookieHeader)
+        .send({ nickname: 'Obidnov' })
+      expect(res.status).toBe(200)
+      expect(res.body.player_id).toBe(player_id)
+      expect(res.body.nickname).toBe('Obidnov')
+    })
+
+    it('persists updated nickname in DB', async () => {
+      const { player_id, cookieHeader } = await createPlayer()
+      await supertest(handle.server)
+        .patch('/api/identity/me')
+        .set('Cookie', cookieHeader)
+        .send({ nickname: 'Obidnov' })
+      const row = getDb()
+        .prepare('SELECT nickname FROM players WHERE player_id = ?')
+        .get(player_id) as { nickname: string }
+      expect(row.nickname).toBe('Obidnov')
+    })
+
+    it('updates last_seen_at', async () => {
+      const { player_id, cookieHeader } = await createPlayer()
+      const before = (
+        getDb().prepare('SELECT last_seen_at FROM players WHERE player_id = ?').get(player_id) as { last_seen_at: number }
+      ).last_seen_at
+      await new Promise<void>((r) => setTimeout(r, 5))
+      await supertest(handle.server)
+        .patch('/api/identity/me')
+        .set('Cookie', cookieHeader)
+        .send({ nickname: 'Obidnov' })
+      const after = (
+        getDb().prepare('SELECT last_seen_at FROM players WHERE player_id = ?').get(player_id) as { last_seen_at: number }
+      ).last_seen_at
+      expect(after).toBeGreaterThan(before)
+    })
+  })
+
+  describe('auth failures (401)', () => {
+    it('returns 401 with no cookie', async () => {
+      const res = await supertest(handle.server)
+        .patch('/api/identity/me')
+        .send({ nickname: 'Obidnov' })
+      expect(res.status).toBe(401)
+      expect(res.body.error).toBe('not_bootstrapped')
+    })
+
+    it('returns 401 with tampered cookie and creates no player', async () => {
+      const fakeId = '00000000-0000-4000-8000-000000000001'
+      const res = await supertest(handle.server)
+        .patch('/api/identity/me')
+        .set('Cookie', makeTamperedCookieHeader(fakeId))
+        .send({ nickname: 'Obidnov' })
+      expect(res.status).toBe(401)
+      expect(res.body.error).toBe('not_bootstrapped')
+      const count = (getDb().prepare('SELECT COUNT(*) as n FROM players').get() as { n: number }).n
+      expect(count).toBe(0)
+    })
+  })
+
+  describe('invalid nickname (400)', () => {
+    it('returns 400 when nickname is missing from body', async () => {
+      const { cookieHeader } = await createPlayer()
+      const res = await supertest(handle.server)
+        .patch('/api/identity/me')
+        .set('Cookie', cookieHeader)
+        .send({})
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe('invalid_nickname')
+    })
+
+    it('returns 400 when nickname is empty string', async () => {
+      const { cookieHeader } = await createPlayer()
+      const res = await supertest(handle.server)
+        .patch('/api/identity/me')
+        .set('Cookie', cookieHeader)
+        .send({ nickname: '' })
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe('invalid_nickname')
+    })
+
+    it('returns 400 when nickname sanitizes to null (control chars only)', async () => {
+      const { cookieHeader } = await createPlayer()
+      const res = await supertest(handle.server)
+        .patch('/api/identity/me')
+        .set('Cookie', cookieHeader)
+        .send({ nickname: ' ' })
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe('invalid_nickname')
+    })
+  })
+
+  describe('rate limiting', () => {
+    it('allows up to 20 requests per identity per minute', async () => {
+      const { cookieHeader } = await createPlayer()
+      for (let i = 0; i < 20; i++) {
+        const res = await supertest(handle.server)
+          .patch('/api/identity/me')
+          .set('Cookie', cookieHeader)
+          .send({ nickname: `Nick${i}` })
+        expect(res.status).toBe(200)
+      }
+    })
+
+    it('returns 429 with Retry-After on the 21st request from the same identity', async () => {
+      const { cookieHeader } = await createPlayer()
+      for (let i = 0; i < 20; i++) {
+        await supertest(handle.server)
+          .patch('/api/identity/me')
+          .set('Cookie', cookieHeader)
+          .send({ nickname: `Nick${i}` })
+      }
+      const res = await supertest(handle.server)
+        .patch('/api/identity/me')
+        .set('Cookie', cookieHeader)
+        .send({ nickname: 'Final' })
+      expect(res.status).toBe(429)
+      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0)
+    })
+  })
+})

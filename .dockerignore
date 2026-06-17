@@ -12,8 +12,3 @@ dist/
 .env
 .env.local
 .env.local.example
-src/
-public/
-index.html
-vite.config.ts
-tsconfig.json

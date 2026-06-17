@@ -223,7 +223,7 @@ export function createQuestPanel(callbacks: QuestPanelCallbacks): QuestPanel {
     open,
     close,
     toggle() {
-      _isOpen ? close() : open()
+      if (_isOpen) { close() } else { open() }
     },
 
     refresh(quests) {

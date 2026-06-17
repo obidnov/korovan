@@ -16,6 +16,7 @@ import type { LootItem } from '../game/inventory'
 export interface HudOptions {
   onSave: () => void
   onSettings: () => void
+  onOpenMap: () => void
 }
 
 export interface Hud {
@@ -88,6 +89,14 @@ export function createHud(opts: HudOptions): Hud {
     flashSave()
   })
 
+  const mapBtn = document.createElement('button')
+  mapBtn.type = 'button'
+  mapBtn.id = 'hud-map'
+  mapBtn.className = 'hud-btn'
+  mapBtn.textContent = 'Map [M]'
+  mapBtn.setAttribute('aria-label', 'Open overworld map (M)')
+  mapBtn.addEventListener('click', opts.onOpenMap)
+
   const settingsBtn = document.createElement('button')
   settingsBtn.type = 'button'
   settingsBtn.id = 'hud-settings'
@@ -97,6 +106,7 @@ export function createHud(opts: HudOptions): Hud {
   settingsBtn.addEventListener('click', opts.onSettings)
 
   actionsRow.appendChild(saveBtn)
+  actionsRow.appendChild(mapBtn)
   actionsRow.appendChild(settingsBtn)
 
   // ── Assemble ──────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ export function createInputHandler(canvas: HTMLCanvasElement): InputHandler {
     jump: false,
     attack: false,
     interact: false,
+    openMap: false,
   }
 
   function onKey(e: KeyboardEvent, down: boolean) {
@@ -40,6 +41,10 @@ export function createInputHandler(canvas: HTMLCanvasElement): InputHandler {
         break
       case 'KeyE':
         state.interact = down
+        break
+      case 'KeyM':
+        // openMap is a one-frame pulse: set true on keydown, clear after one tick
+        if (down) state.openMap = true
         break
     }
   }

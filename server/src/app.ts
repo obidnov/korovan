@@ -1,3 +1,4 @@
+import path from 'node:path'
 import express, { Request, Response, NextFunction } from 'express'
 import cookieParser from 'cookie-parser'
 import { randomUUID } from 'crypto'
@@ -118,6 +119,18 @@ export function createApp(
   // Auth gate for /api/llm/decide — cookieAuth populates req.player before route handler.
   app.use('/api/llm/decide', cookieAuth(loader, COOKIE_SECRET))
   registerLlmDecideRoute(app, provider)
+
+  // Serve Vite-built client. Mounted after all API routes so /api/* and /healthz are
+  // never shadowed. CLIENT_DIR defaults to ../../dist relative to server/dist/index.js,
+  // which resolves to /app/dist in the Docker image (Dockerfile places vite build there).
+  const CLIENT_DIR = process.env.CLIENT_DIR ?? path.resolve(__dirname, '../../dist')
+  app.use(express.static(CLIENT_DIR))
+  // SPA fallback: non-API, non-static routes return index.html for client-side routing.
+  // Express 5 + path-to-regexp v8 rejects bare '*' in app.get(); app.use() is correct here.
+  app.use((req: Request, res: Response, next: NextFunction): void => {
+    if (req.path.startsWith('/api') || req.path === '/healthz') { next(); return }
+    res.sendFile(path.join(CLIENT_DIR, 'index.html'))
+  })
 
   return app
 }

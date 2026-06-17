@@ -125,8 +125,9 @@ export function createApp(
   // which resolves to /app/dist in the Docker image (Dockerfile places vite build there).
   const CLIENT_DIR = process.env.CLIENT_DIR ?? path.resolve(__dirname, '../../dist')
   app.use(express.static(CLIENT_DIR))
-  // SPA fallback: non-API routes return index.html so the client router handles deep links.
-  app.get('*', (req: Request, res: Response, next: NextFunction): void => {
+  // SPA fallback: non-API, non-static routes return index.html for client-side routing.
+  // Express 5 + path-to-regexp v8 rejects bare '*' in app.get(); app.use() is correct here.
+  app.use((req: Request, res: Response, next: NextFunction): void => {
     if (req.path.startsWith('/api') || req.path === '/healthz') { next(); return }
     res.sendFile(path.join(CLIENT_DIR, 'index.html'))
   })

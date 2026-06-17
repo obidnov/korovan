@@ -399,16 +399,6 @@ Refinement-only patch from board comment `61c8898b`:
 8. **TL handoff (BOO-375)** description updated to match.
 9. No changes to: risk register (§6 still covers all three providers structurally), non-goals (§9), MVP success criteria (§3) — DeepSeek's "ping" satisfies criterion 5 unchanged.
 
-## 10c. v3.1 delta vs v3
-
-Board-driven update on Phase 2 kickoff ([BOO-547](paperclip://issues/BOO-547), 2026-06-17). No architecture change vs v3; P1 closed + P2 scope locked + P2 decomposition guidance + budget gate added.
-
-1. **Header status rewritten.** v3 said "Architecture pivot in progress, handed to TL". v3.1 says "P1 shipped to prod, P2 kicked off by board". Post-deploy polish hotfixes ([BOO-543](paperclip://issues/BOO-543) nickname endpoint, [BOO-546](paperclip://issues/BOO-546) settings CSS, [BOO-540](paperclip://issues/BOO-540) GIT_SHA) called out as merged and non-blocking.
-2. **§4 P2 row** rewritten with the concrete board-locked P2 scope. Headline changes: 4 zones + palace-guard faction + commander-quest skeleton + neutral-zone shops + **LLM-go-live on DeepSeek only** + rate-limit/budget caps switched from "hooks-only" to enforced. BOO-490 / BOO-491 called out as explicitly out of P2.
-3. **§8 expanded** with new §8a "Phase 2 decomposition guidance" — TL handoff scope by area (client / backend / ops), explicit non-scope list, non-binding sequencing wave recommendation (A: terrain+factions, B: LLM-go-live gated on budget, C: enforcement+governance, D: commander+shops).
-4. **§11 budget gate added.** CFO/CEO budget review precondition before any sub-issue turns on real DeepSeek traffic at scale. Token-budget caps, daily spend ceiling, alarm threshold encoded.
-5. **No changes to: §1 brief, §2 pillars, §3 MVP definition (P1 ship snapshot), §5 tech stack, §5a/§5b architecture, §6 risk register, §7 product decisions, §9 non-goals, §10/§10a/§10b history.**
-
 ## 10b. v2 delta vs v1
 
 What changed since the original draft:
@@ -422,6 +412,16 @@ What changed since the original draft:
 7. **Risk register +5 rows** (§6): LLM latency, timeouts/outages, cost/rate limits, key leakage, prompt-injection from in-game text.
 8. **Non-goals +2** (§9): no human-vs-human netcode, no proxying user LLM calls.
 9. **Decomposition preview** (§8) updated to flag the two AI-agent issues in P0 (spec) and P1 (scaffold + settings UI).
+
+## 10c. v3.1 delta vs v3
+
+Board-driven update on Phase 2 kickoff ([BOO-547](paperclip://issues/BOO-547), 2026-06-17). No architecture change vs v3; P1 closed + P2 scope locked + P2 decomposition guidance + budget gate added.
+
+1. **Header status rewritten.** v3 said "Architecture pivot in progress, handed to TL". v3.1 says "P1 shipped to prod, P2 kicked off by board". Post-deploy polish hotfixes ([BOO-543](paperclip://issues/BOO-543) nickname endpoint, [BOO-546](paperclip://issues/BOO-546) settings CSS, [BOO-540](paperclip://issues/BOO-540) GIT_SHA) called out as merged and non-blocking.
+2. **§4 P2 row** rewritten with the concrete board-locked P2 scope. Headline changes: 4 zones + palace-guard faction + commander-quest skeleton + neutral-zone shops + **LLM-go-live on DeepSeek only** + rate-limit/budget caps switched from "hooks-only" to enforced. BOO-490 / BOO-491 called out as explicitly out of P2.
+3. **§8 expanded** with new §8a "Phase 2 decomposition guidance" — TL handoff scope by area (client / backend / ops), explicit non-scope list, non-binding sequencing wave recommendation (A: terrain+factions, B: LLM-go-live gated on budget, C: enforcement+governance, D: commander+shops).
+4. **§11 budget gate added.** CFO/CEO budget review precondition before any sub-issue turns on real DeepSeek traffic at scale. Token-budget caps, daily spend ceiling, alarm threshold encoded.
+5. **No changes to: §1 brief, §2 pillars, §3 MVP definition (P1 ship snapshot), §5 tech stack, §5a/§5b architecture, §6 risk register, §7 product decisions, §9 non-goals, §10/§10a/§10b history.**
 
 ---
 

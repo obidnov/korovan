@@ -342,7 +342,62 @@ export class FakeProvider implements LLMProvider {
 
 ---
 
-## 9. Blocker map
+## 9. HTTPS + loopback enforcement (BOO-417)
+
+All adapters MUST enforce the following URL policy at **construction time** — before any `fetch` is issued.
+
+### 9.1 Rules
+
+1. **Parse via `new URL(baseUrl)`.**  This canonicalises mixed-case schemes (e.g. `HTTPS://`), trims trailing whitespace, and surfaces malformed URLs as a `TypeError` before any network call. The `url.hostname` and `url.protocol` fields obtained this way are the authoritative values for all checks below.
+
+2. **HTTPS required for remote hosts.**  If `url.protocol !== 'https:'` and the host is not a loopback address, throw:
+   ```ts
+   throw new LLMProviderError('auth', 'non-HTTPS baseUrl rejected')
+   ```
+
+3. **Loopback (`http://`) is gated to `NODE_ENV === 'test'`.**  Loopback hosts — `localhost`, `127.0.0.1`, `[::1]` — may use plain HTTP, but **only when `process.env.NODE_ENV === 'test'`**.  In any other environment (production, development, staging) plain-HTTP loopback is rejected with the same typed error.
+
+   **Rationale:** server co-tenancy is a real MITM vector that does not exist in a browser context.  A misconfigured `DEEPSEEK_BASE_URL=http://localhost:8080` in a prod container could silently route real API traffic (including the `Authorization: Bearer <key>` header) through a locally-reachable attacker-controlled process.  The NODE_ENV gate ensures this carve-out exists only in controlled test environments where loopback mocks are intentional.
+
+4. **Throws `LLMProviderError`, not plain `Error`.**  Using the typed error class (not `new Error(...)`) ensures the `auth` fallback in EP-3/`AgentDecideHandler` is triggered correctly (see §3 fallback table) and the error is never surfaced to the client.
+
+5. **Empty `apiKey` is also rejected at construction time** with `LLMProviderError('auth', ...)` — before any URL check can even reach the network.
+
+### 9.2 Reference implementation (DeepSeek adapter — `server/src/llm/deepseek.ts`)
+
+```ts
+const url = new URL(baseUrl)          // throws TypeError on malformed input
+const isLoopback =
+  url.hostname === 'localhost' ||
+  url.hostname === '127.0.0.1' ||
+  url.hostname === '[::1]'
+const loopbackAllowed = process.env.NODE_ENV === 'test'
+if (url.protocol !== 'https:' && !(isLoopback && loopbackAllowed)) {
+  throw new LLMProviderError('auth', 'non-HTTPS baseUrl rejected')
+}
+```
+
+Future adapters (BOO-397 OpenAI-compat, BOO-396 Anthropic) **must clone this exact block** — do not write ad-hoc URL checks.
+
+### 9.3 Difference from client-side spec (`docs/ai-agent-spec.md` §6)
+
+`docs/ai-agent-spec.md` §6 (client-side, BOO-381) permits plain-HTTP loopback unconditionally (to support Ollama-style local model endpoints from a browser).  **That rule does NOT apply on the server side.**  Key differences:
+
+| Dimension | Client-side (BOO-381 / `ai-agent-spec.md` §6) | Server-side (this spec §9) |
+|---|---|---|
+| HTTP loopback | Allowed unconditionally | Allowed **only** when `NODE_ENV === 'test'` |
+| Error class | `LLMError` (`src/ai/types.ts`) | `LLMProviderError` (`server/src/llm/types.ts`) |
+| MITM concern | Low — user-controlled browser, user owns the key | High — server co-tenancy, operator holds the key |
+
+The client-side spec pre-dates the server-side pivot (BOO-455) and was written from a "user brings their own key" perspective.  Future BOO-397/BOO-396 contributors should read **this section** (§9), not `ai-agent-spec.md` §6, for the applicable HTTPS policy.
+
+### 9.4 Canonical error class name
+
+The server-side typed error is **`LLMProviderError`** (exported from `server/src/llm/types.ts`).  Older doc revisions and client-side code use `LLMError` — do not mix the two in server-side code or spec docs.  `LLMError` remains in `src/ai/types.ts` as the client-side class and is not interchangeable.
+
+---
+
+## 10. Blocker map
 
 This spec is prerequisite for:
 
@@ -355,14 +410,11 @@ This spec is prerequisite for:
 
 ---
 
-## 10. Acceptance criteria (reproduced from BOO-468)
+## 11. Acceptance criteria (reproduced from BOO-468)
 
 - [x] Spec doc lives at `docs/llm-provider.md`
 - [x] `LLMProvider` interface + `DecideInput` / `DecideOutput` / `AgentCommand` types committed to `server/src/llm/types.ts`
 - [x] Fallback semantics enumerated for every observable failure class (§3)
 - [ ] Sanitizer rules enumerated (§4 done); **CSO `cso-signoff: approved` on §4 + §2 validation table pending**
 - [x] BD signs the spec via comment + commits to it as the source-of-truth for BC-1, BC-3, EP-3
-
----
-
-*Last updated: BOO-468 initial commit. BD sign-off: see issue thread comment.*
+- [x] HTTPS + loopback enforcement policy documented (§9, BOO-530); server-side NODE_ENV gate rationale captured; client-side vs server-side difference table added

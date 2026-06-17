@@ -179,7 +179,9 @@ The scripted fallback AI always runs as a synchronous fallback layer in `AgentRo
 - Key is stored as-is (user owns the device). It is **never** sent to any telemetry endpoint, never included in error messages, never bundled in source.
 - Clearable via "Forget provider" button in settings UI (separate issue). Clearing removes the key from `localStorage`.
 - On startup, if `version` is missing or unrecognized, discard and prompt for re-entry.
-- **HTTPS enforcement:** Adapters MUST refuse non-HTTPS `baseUrl` unless the host is `localhost`, `127.0.0.1`, or `::1` (to allow Ollama-style local model endpoints). Throwing `new LLMError('auth', 'non-HTTPS baseUrl rejected')` before any fetch prevents the API key from being transmitted in plaintext over a misconfigured URL. Settings-save UI MUST reject non-HTTPS, non-loopback URLs at input time. *(Code enforcement lands in BOO-394 DeepSeek adapter and BOO-397 OpenAI-compat adapter.)*
+- **HTTPS enforcement (client-side):** Adapters MUST refuse non-HTTPS `baseUrl` unless the host is `localhost`, `127.0.0.1`, or `::1` (to allow Ollama-style local model endpoints). Throwing `new LLMError('auth', 'non-HTTPS baseUrl rejected')` before any fetch prevents the API key from being transmitted in plaintext over a misconfigured URL. Settings-save UI MUST reject non-HTTPS, non-loopback URLs at input time. *(Code enforcement lands in BOO-394 DeepSeek adapter and BOO-397 OpenAI-compat adapter.)*
+
+  > **⚠️ Server-side tightening (BOO-417) — different rule applies:** The server-side LLM layer (see `docs/llm-provider.md` §9) gates plain-HTTP loopback to `NODE_ENV === 'test'` only. In any non-test environment plain-HTTP loopback is rejected even for `localhost`/`127.0.0.1`/`[::1]`, because server co-tenancy creates a real MITM vector that does not exist in a browser. Server-side adapters also throw `LLMProviderError` (from `server/src/llm/types.ts`), not `LLMError`. If you are implementing a **server-side** adapter, read `docs/llm-provider.md §9` — not this section — for the applicable policy.
 
 ---
 

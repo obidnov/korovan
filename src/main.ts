@@ -29,6 +29,7 @@ import { createSettingsPanel, applyAudioSettings, loadAudioSettings } from './ui
 import { createMainMenu } from './ui/mainMenu'
 import { createHud } from './ui/hud'
 import { createPauseMenu } from './ui/pauseMenu'
+import { createOverworldMap } from './ui/overworldMap'
 import { saveGame, loadGame } from './persistence/save'
 import { validateSaveV1, type SaveV1 } from './save/schema'
 import { startSceneAudio, type SceneAudioHandle } from './audio/sceneAudio'
@@ -37,6 +38,13 @@ import { spawnForest } from './world/forest'
 import { createQuestManager } from './game/quests/questManager'
 import { WALK_TO_ANCHOR_QUEST } from './game/quests/questFixtures'
 import { createQuestPanel } from './ui/questPanel'
+import { startStubZone } from './scene/stubZoneScene'
+import { type ZoneId } from './world/zones'
+
+// ---------------------------------------------------------------------------
+// Zone-swap: before-reload signal key
+// ---------------------------------------------------------------------------
+const ZONE_SWAP_KEY = 'korovan:zone-swap'
 
 // ---------------------------------------------------------------------------
 // One-time localStorage migration: remove legacy client-side provider keys
@@ -84,11 +92,35 @@ applyAudioSettings(loadAudioSettings())
 onDamageReceived(() => hit.play())
 
 // ---------------------------------------------------------------------------
+// Zone dispatch — routes to elf-forest (full scene) or stub zones
+// ---------------------------------------------------------------------------
+
+async function startZoneGame(savedState: SaveV1 | null): Promise<void> {
+  const zone: ZoneId = (savedState?.world.currentZone ?? 'elf-forest')
+  if (zone === 'elf-forest') {
+    return startGame(savedState)
+  }
+  return startStubZone({
+    zoneId: zone,
+    savedState,
+    currentZone: zone,
+    onSettings: () => settingsPanel.open(),
+    onMainMenu: () => void (async () => {
+      location.reload()
+    })(),
+    onTravelRequest: async (_targetZone: ZoneId) => {
+      sessionStorage.setItem(ZONE_SWAP_KEY, '1')
+      location.reload()
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Main menu — shown immediately before game loads
 // ---------------------------------------------------------------------------
 
 const mainMenu = createMainMenu({
-  onNewGame: () => startGame(null),
+  onNewGame: () => startZoneGame(null),
   onContinue: () => void (async () => {
     const record = await loadGame(0)
     let savedState: SaveV1 | null = null
@@ -100,7 +132,7 @@ const mainMenu = createMainMenu({
         console.warn('[korovan] corrupt save data, starting fresh')
       }
     }
-    startGame(savedState)
+    startZoneGame(savedState)
   })(),
   onSettings: () => settingsPanel.open(),
 })
@@ -110,6 +142,23 @@ const mainMenu = createMainMenu({
 void runBootstrap().then(async () => {
   const record = await loadGame(0).catch(() => null)
   mainMenu.setContinueAvailable(record !== null)
+
+  // Zone-swap auto-continue: if we reloaded after a zone transition, jump straight into
+  // the new zone (save already has currentZone set to the destination).
+  const isZoneSwap = sessionStorage.getItem(ZONE_SWAP_KEY) === '1'
+  if (isZoneSwap) {
+    sessionStorage.removeItem(ZONE_SWAP_KEY)
+    if (record !== null) {
+      let savedState: SaveV1 | null = null
+      try {
+        savedState = validateSaveV1(record.payload)
+      } catch {
+        console.warn('[korovan] corrupt save on zone-swap, starting fresh at elf-forest')
+      }
+      return startZoneGame(savedState)
+    }
+  }
+
   mainMenu.show()
 })
 
@@ -338,16 +387,34 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
       },
       world: {
         caravanState: caravanFsm.toSaveState(),
+        currentZone: 'elf-forest',
       },
       quests: questManager.toSave(),
     }
   }
+
+  // ── Overworld map ─────────────────────────────────────────────────────────
+  const overworldMap = createOverworldMap({
+    onTravel: (targetZone: ZoneId) => {
+      void (async () => {
+        const data = buildSaveData()
+        await saveGame(0, { ...data, world: { ...data.world, currentZone: targetZone } }, 1)
+          .catch((err: unknown) => console.warn('[korovan] pre-travel save failed:', err))
+        sessionStorage.setItem(ZONE_SWAP_KEY, '1')
+        void (sceneAudio ? sceneAudio.unload() : Promise.resolve()).then(() => location.reload())
+      })()
+    },
+  })
 
   const hud = createHud({
     onSave: () => void saveGame(0, buildSaveData(), 1).catch((err: unknown) => {
       console.warn('[korovan] save failed:', err)
     }),
     onSettings: () => settingsPanel.open(),
+    onOpenMap: () => {
+      if (document.pointerLockElement === canvas) document.exitPointerLock()
+      overworldMap.open('elf-forest')
+    },
   })
   hud.setHp(playerHp.hp, PLAYER_MAX_HP)
   hud.setInventory(inventory.list())
@@ -374,6 +441,10 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     onMainMenu: () => {
       void (sceneAudio ? sceneAudio.unload() : Promise.resolve()).then(() => location.reload())
     },
+    onOpenMap: () => {
+      pauseMenu.close()
+      overworldMap.open('elf-forest')
+    },
   })
 
   // -------------------------------------------------------------------------
@@ -399,7 +470,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   const hint = document.createElement('div')
   hint.id = 'pointer-hint'
   hint.textContent =
-    'Click to capture mouse — WASD move, Space jump, LMB attack, E interact, J quests, Esc pause'
+    'Click to capture mouse — WASD move, Space jump, LMB attack, E interact, J quests, M map, Esc pause'
   document.body.appendChild(hint)
 
   document.addEventListener('pointerlockchange', () => {
@@ -407,8 +478,8 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     hint.style.display = locked ? 'none' : 'block'
 
     // Pointer lock released (Esc during play) → open pause menu
-    // Guard: don't pause when quest panel released the lock intentionally
-    if (!locked && !pauseMenu.isOpen && !questPanel.isOpen) {
+    // Guard: don't pause when quest panel or overworld map released the lock intentionally
+    if (!locked && !pauseMenu.isOpen && !questPanel.isOpen && !overworldMap.isOpen) {
       paused = true
       sceneAudio?.pause()
       pauseMenu.open()
@@ -416,7 +487,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   })
 
   canvas.addEventListener('click', () => {
-    if (!pauseMenu.isOpen) canvas.requestPointerLock()
+    if (!pauseMenu.isOpen && !overworldMap.isOpen) canvas.requestPointerLock()
   })
 
   // -------------------------------------------------------------------------
@@ -433,6 +504,14 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     if (pendingRespawn) {
       pendingRespawn = false
       player.teleport({ x: 0, y: 2, z: 0 })
+    }
+
+    // M key → open overworld map (pulse: cleared after one tick)
+    if (input.state.openMap) {
+      input.state.openMap = false
+      if (document.pointerLockElement === canvas) document.exitPointerLock()
+      overworldMap.open('elf-forest')
+      return
     }
 
     step()

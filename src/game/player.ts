@@ -12,6 +12,8 @@ export type InputState = {
   attack: boolean
   /** True while E key is held — interact with world objects. */
   interact: boolean
+  /** True on the frame M key is pressed — open overworld map. */
+  openMap: boolean
 }
 
 export type PlayerController = {

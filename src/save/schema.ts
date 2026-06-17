@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CaravanSaveState } from '../world/caravan.js';
+import type { QuestState } from '../game/quests/questTypes.js';
 
 // Placeholder until inventory issue defines the canonical shape
 export interface LootItem {
@@ -11,6 +12,12 @@ export const lootItemSchema = z.object({
   id: z.string(),
   qty: z.number().int().nonnegative(),
 });
+
+export const questStateSchema = z.object({
+  id: z.string(),
+  status: z.enum(['available', 'active', 'completed', 'failed']),
+  tracked: z.boolean(),
+}) satisfies z.ZodType<QuestState>;
 
 export const caravanSaveStateSchema = z.object({
   stateId: z.enum(['active', 'looted']),
@@ -33,6 +40,8 @@ const saveV1Schema = z.object({
     // null accepted for saves predating the caravan feature (BOO-387)
     caravanState: z.union([caravanSaveStateSchema, z.null()]),
   }),
+  // quests optional so pre-BOO-563 saves continue to parse without error.
+  quests: z.array(questStateSchema).optional(),
   // settings.provider was client-side in pre-BOO-485 saves; now server-side per P0-3/P0-4.
   // Field kept optional so old saves continue to parse without error.
   settings: z.object({

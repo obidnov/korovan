@@ -34,6 +34,9 @@ import { validateSaveV1, type SaveV1 } from './save/schema'
 import { startSceneAudio, type SceneAudioHandle } from './audio/sceneAudio'
 import { createFootstepsController } from './audio/footstepsController'
 import { spawnForest } from './world/forest'
+import { createQuestManager } from './game/quests/questManager'
+import { WALK_TO_ANCHOR_QUEST } from './game/quests/questFixtures'
+import { createQuestPanel } from './ui/questPanel'
 
 // ---------------------------------------------------------------------------
 // One-time localStorage migration: remove legacy client-side provider keys
@@ -294,6 +297,33 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   }
 
   // -------------------------------------------------------------------------
+  // Quest system
+  // -------------------------------------------------------------------------
+
+  const questManager = createQuestManager(savedState?.quests ?? [])
+  questManager.register(WALK_TO_ANCHOR_QUEST)
+
+  const questPanel = createQuestPanel({
+    onAccept: (id) => { questManager.accept(id) },
+    onDecline: (id) => { questManager.decline(id) },
+    onComplete: (id) => { questManager.complete(id) },
+    onToggleTrack: (id) => { questManager.toggleTrack(id) },
+  })
+
+  questManager.onChange(() => questPanel.refresh(questManager.getAll()))
+  questPanel.refresh(questManager.getAll())
+
+  // J key toggles the quest panel (only when not paused and pointer is locked)
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.code !== 'KeyJ') return
+    if (paused) return
+    if (document.pointerLockElement !== canvas && !questPanel.isOpen) return
+    questPanel.toggle()
+    // Release pointer lock while panel is open so mouse can interact
+    if (questPanel.isOpen) document.exitPointerLock()
+  })
+
+  // -------------------------------------------------------------------------
   // HUD
   // -------------------------------------------------------------------------
 
@@ -309,6 +339,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
       world: {
         caravanState: caravanFsm.toSaveState(),
       },
+      quests: questManager.toSave(),
     }
   }
 
@@ -368,7 +399,7 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
   const hint = document.createElement('div')
   hint.id = 'pointer-hint'
   hint.textContent =
-    'Click to capture mouse — WASD move, Space jump, LMB attack, E interact, Esc pause'
+    'Click to capture mouse — WASD move, Space jump, LMB attack, E interact, J quests, Esc pause'
   document.body.appendChild(hint)
 
   document.addEventListener('pointerlockchange', () => {
@@ -376,7 +407,8 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     hint.style.display = locked ? 'none' : 'block'
 
     // Pointer lock released (Esc during play) → open pause menu
-    if (!locked && !pauseMenu.isOpen) {
+    // Guard: don't pause when quest panel released the lock intentionally
+    if (!locked && !pauseMenu.isOpen && !questPanel.isOpen) {
       paused = true
       sceneAudio?.pause()
       pauseMenu.open()

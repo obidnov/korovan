@@ -94,6 +94,10 @@ export function createApp(
       ok: true,
       version: process.env.GIT_SHA ?? 'dev',
       uptime_ms: Date.now() - START_MS,
+      // Kill-switch observability (BOO-568): reflects LLM_PROXY_ENABLED env state so
+      // operator can confirm toggle propagated after `fly secrets set`.
+      // Defaults true (proxy on); false only when explicitly set to the string "false".
+      llm_proxy_enabled: process.env.LLM_PROXY_ENABLED !== 'false',
     })
   })
 

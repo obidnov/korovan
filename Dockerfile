@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# korovan backend — Fly.io single-stage build
+# korovan — Fly.io single-app build (server + Vite client)
 #
 # Build context: repo root.
 # Fly.io injects PORT (matches fly.toml internal_port=8080).
@@ -24,6 +24,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY server/package.json server/
 
 RUN pnpm install --frozen-lockfile
+
+# Build Vite client → /app/dist  (served by Express as static files)
+COPY index.html vite.config.ts tsconfig.json ./
+COPY public/ public/
+COPY src/ src/
+
+RUN pnpm build
 
 # Compile TypeScript → server/dist/
 COPY server/src/ server/src/

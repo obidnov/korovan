@@ -102,7 +102,7 @@ Total: ~7–9 months calendar for a small team (1 client eng + 1 backend eng + p
 | **🆕 Backend storage** | **SQLite-on-volume for MVP** → Postgres at scale (P5+ if needed) | Single-file, runs cheap on Fly.io / Render / Railway volumes. Migrate to Postgres only when scale forces it. TBD in detail by TL during decomposition. |
 | **🆕 Backend deploy target** | **TBD by Release Engineer during P0** (candidates: Fly.io, Render, Railway) | Small Node service + a persistent volume. CEO/board: prefer a target with a free or cheap tier for the demo phase. |
 | **🆕 AI Agent layer** | **Server-side** provider-agnostic `LLMProvider` interface (fetch-based, no SDK lock-in). P1 ships DeepSeek adapter only (board priority `61c8898b`); Anthropic-compatible and OpenAI-compatible adapters are follow-up issues for post-P1. Scripted AI = always-on fallback (now lives both client-side for offline + server-side for provider-error path). | apiKey + provider config are server secrets; client carries no provider knowledge. See §5a, §5b. |
-| Client hosting | Static hosting (Vercel / GitHub Pages) | Game client is fully client-side; trivial deploy. |
+| Client hosting | Static hosting (Vercel / GitHub Pages) — _demo phase exception: client served by Express from the same Fly app (BOO-541, board decision 2026-06-17). One URL, no CORS, same-origin `/api`. Reverts to dedicated static host post-demo if needed._ | Game client is fully client-side; trivial deploy. |
 | CI | GitHub Actions: typecheck + bundle-size budget (client) + tests + build (server) | Single workflow covers both packages. |
 
 ### 5a. AI-agent layer — server-proxied architecture (v3)

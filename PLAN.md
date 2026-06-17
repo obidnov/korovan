@@ -1,10 +1,11 @@
 # korovan — Product plan
 
-**Revision:** v3 (2026-06-15)
+**Revision:** v3.1 (2026-06-17)
 **Author:** CEO
-**Status:** Architecture pivot — backend (Node + Express + TS) added. v2.1 client-only assumptions superseded by board decision in [BOO-455](paperclip://issues/BOO-455). LLM-provider apiKey moves browser → server, LLM calls now proxied, saves move localStorage → server, plus new leaderboards and server-side AI-state surfaces. Handed off to Tech Lead for backend-slice decomposition. See §7 for locked answers, §5b for the new backend architecture, and §10 for the v3 delta.
+**Status:** **P1 (vertical slice / MVP) shipped to prod** — https://korovan.fly.dev (client + API, identity, saves, leaderboard, LLM-proxy wire + DeepSeek + scripted fallback). Post-deploy polish (BOO-543 nickname endpoint, BOO-546 settings CSS, BOO-540 GIT_SHA) merged. **Phase 2 kicked off by board** in [BOO-547](paperclip://issues/BOO-547) (2026-06-17): all 4 zones traversable, palace-guard faction, commander-quest skeleton, neutral-zone shops, **server-side LLM-agent actually drives enemy strategy on DeepSeek only**, per-IP/per-account rate-limit + token-budget caps go-live. **Anthropic + OpenAI-compatible adapters ([BOO-490](paperclip://issues/BOO-490), [BOO-491](paperclip://issues/BOO-491)) explicitly OUT of P2** — they stay backlog/low until a future board decision, on the same `LLMProvider` interface. See §4 P2 row, §8 P2 decomposition guidance, §10c P2 delta, §11 budget gate.
 **Source brief:** [BOO-374](paperclip://issues/BOO-374) — Kirill's original wishlist, preserved verbatim in §1.
 **Architecture pivot:** [BOO-455](paperclip://issues/BOO-455) — board decision (2026-06-15).
+**Phase 2 kickoff:** [BOO-547](paperclip://issues/BOO-547) — board decision (2026-06-17).
 
 ---
 
@@ -79,7 +80,7 @@
 |---|---|---|---|
 | **P0** | Pre-production | Engine pick locked, art direction locked, asset pipeline, repo bootstrap, CI, save-format spec, **AI-agent provider abstraction spec**, **backend bootstrap (Node + Express + TS skeleton, `/healthz`, secrets handling spec, deploy target picked)** | 1–2 wk |
 | **P1** | Vertical slice (= MVP, §3) | Elf zone playable end-to-end, 1 caravan, 1 enemy, **server saves**, **server-side LLM proxy + DeepSeek adapter + scripted fallback**, **leaderboard MVP slice**, **anonymous identity (cookie + nickname)**, settings UI (no apiKey) | 5–7 wk |
-| **P2** | Map + 2nd faction + **LLM agent goes live** | All 4 zones traversable, palace guard faction, commander quest skeleton, basic shops in neutral zone, **server-side LLM agent drives opposing faction's strategic decisions** (patrol routes, raid scheduling, target selection), **per-IP/per-account rate limits + token budget** | 5–7 wk |
+| **P2** | Map + 2nd faction + **LLM agent goes live (DeepSeek only)** | All 4 zones traversable (neutral / palace / villain mountain — currently only elf zone), palace-guard faction (2nd playable + opposing), commander-quest skeleton, basic shops in neutral zone, **server-side LLM agent actually drives palace-guard strategic decisions on DeepSeek only** (patrol routes, raid scheduling, target selection) — scripted-AI stays always-on fallback, **per-IP + per-account rate-limit caps + daily token-budget caps switched from "hooks only" (P1 BOO-482) to enforced**. Anthropic + OpenAI-compatible adapters ([BOO-490](paperclip://issues/BOO-490), [BOO-491](paperclip://issues/BOO-491)) **explicitly out of P2** — stay backlog/low. Budget gate (§11) gates LLM-go-live. | 5–7 wk |
 | **P3** | Villain + raid loop | Villain faction, squad command (follow/attack), large-scale raid event on palace, faction-vs-faction AI battles, **server-side LLM expanded to all 3 factions when not player-controlled** | 4–6 wk |
 | **P4** | Limb/wound system | Hit-zone targeting, bleed-out timer, eye/leg/hand wounds, prosthetic items, half-screen-black shader, movement state machine (walk → crawl → wheelchair) | 3–4 wk |
 | **P5** | v1.0 polish | More enemies, more caravans, day/night, audio pass, settings menu polish, balance, **optional account upgrade (email+passcode → cross-device saves)**, **server-side LLM cost dashboard + per-account token caps**, leaderboard anti-cheat pass | 3–4 wk |
@@ -297,6 +298,52 @@ Post-P1 (follow-ups, slot into P2):
 
 **P2–P5 issues** filed at the start of each phase. P2 headlines server-side LLM-go-live (full strategic surface) and per-account/per-IP rate limits + token budget enforcement. P5 adds optional account upgrade for cross-device saves, LLM cost dashboard, and leaderboard anti-cheat.
 
+### 8a. Phase 2 decomposition guidance (TL handoff, board kickoff 2026-06-17)
+
+Handed to Tech Lead under a dedicated P2 EPIC (filed alongside this v3.1 PLAN update; see [BOO-547](paperclip://issues/BOO-547) for the board mandate). The list below is **scope guidance for TL decomposition**, not the final issue set. TL owns the final breakdown; CEO owns scope acceptance + budget gate.
+
+**P2 client (game) work** — preserve P1 vertical slice, extend the world:
+
+- 🆕 **Neutral-zone terrain + transitions** — human trade hub, traversable from elf forest. Includes overworld transition mechanics if used.
+- 🆕 **Palace zone terrain + emperor's palace exterior** — second zone with palace landmark.
+- 🆕 **Villain mountain zone + old fort** — third new zone, mountainous biome with the fort structure.
+- 🆕 **Palace-guard playable faction** — selectable faction in main menu; faction-specific spawn point, starting gear, faction-tinted UI. Asymmetric goals per §2 pillar #1.
+- 🆕 **Palace-guard NPC variants for elf-faction encounters** — replaces / extends current "palace soldier patrol" enemy. Hostile to elves, friendly to palace player.
+- 🆕 **Commander-quest skeleton** — minimal quest UI surface: quest list, accept/decline, complete state. One scripted "report to commander" quest end-to-end on the palace path.
+- 🆕 **Neutral-zone shops (basic)** — at least one shop NPC in human-zone trade hub; buy/sell loot for currency; one usable consumable + one weapon swap. Daggerfall-lite per §2 pillar.
+
+**P2 backend (game-impacting) work** — activate LLM strategic drive on DeepSeek; turn on enforcement:
+
+- 🆕 **Activate `POST /api/llm/decide` in actual gameplay** — wire from P1 ([BOO-487](paperclip://issues/BOO-487)) currently stubbed at game-loop level. P2: server response is consumed by enemy-faction strategy on the 5–15 s strategic tick. Patrol routes, raid scheduling, target selection are LLM-driven for the opposing faction (palace guard when player = elves; elves when player = palace).
+- 🆕 **DeepSeek-adapter production hardening** — the P1 adapter is a "ping works" wire. P2 requires: real strategic-prompt construction (per §5a design choice #4), command-schema validation (tool-calling preferred, JSON-schema fallback), structured logging without secret/payload leaks, retry policy without storms, server-side scripted-AI fallback on provider error (per §5a fallback two-layer model).
+- 🆕 **Server-side AI state expansion** — P1 ships an empty/minimal `ai_sessions` row. P2 implements: write recent decisions + faction worldview after each tick, bounded-size truncate/summarize policy, per-(player_id, faction) read on next tick. Token cost predictable across calls.
+- 🆕 **Rate-limit enforcement (real caps)** — P1 [BOO-482](paperclip://issues/BOO-482) shipped middleware hooks with no caps wired. P2 switches caps **on**: per-identity request RPM + per-IP RPM + daily token-budget per-identity. Caps live in env config; defaults set conservatively before LLM go-live; CSO sign-off on the cap profile.
+- 🆕 **Daily token-budget enforcement + spend telemetry** — counters per-(identity, day) for total tokens consumed; reject requests that would exceed daily cap with a 429 + "scripted-AI fallback" hint so client continues gracefully. Minimal telemetry surface (count + cost-estimate logged daily) — full cost dashboard remains P5.
+- 🆕 **Prompt-injection sanitizer enforcement** — P1 [BOO-468](paperclip://issues/BOO-468) shipped the spec. P2: sanitizer wired into every prompt construction path; player-controlled strings (nickname, item names) escaped/quoted; LLM output validated against command schema before persistence or return-to-client.
+
+**P2 ops + governance:**
+
+- 🆕 **CSO sign-off on LLM go-live profile** — rate-limit caps, token-budget caps, secret-rotation procedure already in place from P1 (BOO-455 era), but **LLM-go-live triggers a fresh CSO review** of the live cap profile because P2 turns enforcement on for the first time. Security routing per `_security_routing.md` §1 — any P2 sub-issue touching auth / payments / rate-limits / external-API / secrets must carry the appropriate trigger label so [STEP 4.5](../boomstream-paperclip/team/_pre_in_review_check.md) auto-routes to CSO.
+- 🆕 **Budget gate (CFO/CEO)** — see §11. **Blocking gate** before any sub-issue that turns on real provider traffic at scale.
+
+**Explicit non-scope for P2:**
+
+- ❌ **Anthropic adapter ([BOO-490](paperclip://issues/BOO-490))** — stays backlog/low. Will land later on the same server-side `LLMProvider` interface, by separate board decision.
+- ❌ **OpenAI-compatible adapter ([BOO-491](paperclip://issues/BOO-491))** — stays backlog/low. Same rationale.
+- ❌ Villain faction (P3 headline) — explicitly deferred per §4.
+- ❌ Limb / wound system (P4 headline) — explicitly deferred per §4.
+- ❌ Email+passcode account upgrade, full LLM cost dashboard, leaderboard anti-cheat (P5 polish) — explicitly deferred per §4.
+- ❌ Self-hosted LLM inference, mobile-first, VR, modding API — permanent non-goals per §9.
+
+**Sequencing recommendation (non-binding for TL):**
+
+1. **Wave A — terrain + factions** (parallel-safe): 4-zone terrain, palace-guard faction selectable, palace-guard NPC variant. Client-heavy, no LLM dependency.
+2. **Wave B — backend LLM-go-live**: gated on §11 budget gate accept. DeepSeek-adapter hardening → server-side AI state expansion → activate `/api/llm/decide` in real game tick. Sequenced; each depends on the prior.
+3. **Wave C — enforcement + governance**: rate-limit caps on, token-budget enforcement on, sanitizer enforcement, CSO sign-off. Can begin in parallel with late Wave B.
+4. **Wave D — commander quest + shops**: lower-priority content; can fill gaps while A/B/C land.
+
+TL has full authority to re-sequence based on capacity and dependency graph. Decomposition idempotency rules (rule #12 in `team/_overview.md`) apply at filing time.
+
 ## 9. Non-goals (explicitly out)
 
 - **Mobile-first.** Desktop browser is the launch target. Mobile support is post-v1.0.
@@ -352,6 +399,16 @@ Refinement-only patch from board comment `61c8898b`:
 8. **TL handoff (BOO-375)** description updated to match.
 9. No changes to: risk register (§6 still covers all three providers structurally), non-goals (§9), MVP success criteria (§3) — DeepSeek's "ping" satisfies criterion 5 unchanged.
 
+## 10c. v3.1 delta vs v3
+
+Board-driven update on Phase 2 kickoff ([BOO-547](paperclip://issues/BOO-547), 2026-06-17). No architecture change vs v3; P1 closed + P2 scope locked + P2 decomposition guidance + budget gate added.
+
+1. **Header status rewritten.** v3 said "Architecture pivot in progress, handed to TL". v3.1 says "P1 shipped to prod, P2 kicked off by board". Post-deploy polish hotfixes ([BOO-543](paperclip://issues/BOO-543) nickname endpoint, [BOO-546](paperclip://issues/BOO-546) settings CSS, [BOO-540](paperclip://issues/BOO-540) GIT_SHA) called out as merged and non-blocking.
+2. **§4 P2 row** rewritten with the concrete board-locked P2 scope. Headline changes: 4 zones + palace-guard faction + commander-quest skeleton + neutral-zone shops + **LLM-go-live on DeepSeek only** + rate-limit/budget caps switched from "hooks-only" to enforced. BOO-490 / BOO-491 called out as explicitly out of P2.
+3. **§8 expanded** with new §8a "Phase 2 decomposition guidance" — TL handoff scope by area (client / backend / ops), explicit non-scope list, non-binding sequencing wave recommendation (A: terrain+factions, B: LLM-go-live gated on budget, C: enforcement+governance, D: commander+shops).
+4. **§11 budget gate added.** CFO/CEO budget review precondition before any sub-issue turns on real DeepSeek traffic at scale. Token-budget caps, daily spend ceiling, alarm threshold encoded.
+5. **No changes to: §1 brief, §2 pillars, §3 MVP definition (P1 ship snapshot), §5 tech stack, §5a/§5b architecture, §6 risk register, §7 product decisions, §9 non-goals, §10/§10a/§10b history.**
+
 ## 10b. v2 delta vs v1
 
 What changed since the original draft:
@@ -368,8 +425,42 @@ What changed since the original draft:
 
 ---
 
+## 11. P2 budget gate (CFO/CEO blocking gate on LLM-go-live)
+
+**Decision context.** Provider apiKey lives server-side now (§5b, §6 risk row "provider call cost runs away"). With LLM strategically driving the opposing faction every 5–15 s per active player session, real provider spend is no longer hypothetical. The board added a CFO/CEO budget review as a precondition before any P2 sub-issue turns on real DeepSeek traffic at scale (per [BOO-547](paperclip://issues/BOO-547) §"Задачи CEO" #4).
+
+**Gate semantics.** Wave B (backend LLM-go-live) and Wave C (enforcement + governance) sub-issues that turn DeepSeek calls on for live gameplay are **blocked** until this gate is accepted. Wave A (terrain + factions) and Wave D (commander quest + shops) are unblocked and can proceed in parallel.
+
+**Gate inputs (CEO/CFO accept these before sign-off):**
+
+1. **Per-identity request RPM cap** — default proposal: 12 requests/minute per cookie-identity (= one strategic tick every 5 s, the upper end of §5a tempo separation). TL can revise based on real game-loop tempo.
+2. **Per-IP request RPM cap** — default proposal: 30/min (anti-abuse + multi-account-per-IP allowance).
+3. **Daily token-budget per-identity** — default proposal: 50k tokens/day/identity. Reject 429 + scripted-AI fallback hint past cap.
+4. **Daily token-budget global ceiling (cluster-wide)** — default proposal: 5M tokens/day across all identities. Hard stop on the whole `/api/llm/decide` endpoint past ceiling (server returns scripted-AI for every request); CEO paged.
+5. **Estimated monthly spend at default caps + p50 / p95 active-player projections** — TL/RE provides a back-of-envelope. CFO/CEO accepts the worst case.
+6. **Alarm threshold** — monthly spend ≥ $X triggers a CEO page + spend dashboard freeze. Default $X = TBD per CFO/CEO review.
+7. **Kill-switch** — env-var toggle `LLM_PROXY_ENABLED=false` that forces every `/api/llm/decide` call into scripted-AI fallback within one deploy cycle. Already partially in place from P1 server-side fallback; P2 makes it a first-class env toggle.
+
+**Gate outputs (after CFO/CEO accept):**
+
+- Accepted caps written into env config + runbook.
+- TL unblocks Wave B / Wave C sub-issues that carry the `budget-gate-cleared` reference.
+- CSO sign-off on the cap profile recorded (per `_security_routing.md` §1 + [STEP 4.5](../boomstream-paperclip/team/_pre_in_review_check.md) auto-routing).
+- Spend telemetry (counter + per-day rollup) ships **before** Wave B can be merged (so we see cost from the first live tick, not after).
+
+**Out of scope for this gate** (deferred to P5 polish per §4):
+
+- Full cost dashboard (Grafana / metabase view).
+- Per-account billing / monetization.
+- Anthropic / OpenAI-compat adapter pricing modeling — those providers stay backlog/low ([BOO-490](paperclip://issues/BOO-490), [BOO-491](paperclip://issues/BOO-491)).
+
+**Gate disposition.** Tracked on the P2 EPIC filed alongside this PLAN update (TL handoff under [BOO-547](paperclip://issues/BOO-547)). CEO files the gate as a sub-issue / interaction with explicit cap proposals; CFO accept (board interaction) is the unblock signal.
+
+---
+
 *Revision history*
 
+- **v3.1 (2026-06-17)** — P1 closed, P2 kicked off by board ([BOO-547](paperclip://issues/BOO-547)). Header status rewritten. §4 P2 row rewritten with concrete board-locked P2 scope. §8 expanded with new §8a "Phase 2 decomposition guidance" (client/backend/ops scope + non-scope + non-binding sequencing waves). §10c added documenting v3.1 delta. **§11 added — P2 budget gate (CFO/CEO blocking gate on LLM-go-live).** [BOO-490](paperclip://issues/BOO-490) / [BOO-491](paperclip://issues/BOO-491) explicitly out of P2.
 - **v3 (2026-06-15)** — Architecture pivot. Board adds backend ([BOO-455](paperclip://issues/BOO-455)). apiKey moves browser → server, LLM calls proxied, saves move localStorage → server, server-side AI state, leaderboards added. New §5b. Client-side key-handling saga superseded (BOO-403, 411, 412, 449 cancelled as moot; BOO-405/407/417/436 rescoped to server-side under TL/CSO; BOO-409 historical; BOO-390/391/393/394/396/397 re-decomposed under TL handoff). Game client preserved verbatim.
 - **v2.1 (2026-06-14)** — Board refinement on provider priority (`61c8898b`). DeepSeek = MVP/P1 default and only adapter in P1; Anthropic + OpenAI-compat become follow-up issues. §2, §3, §5, §5a, §7, §8, §10 updated. TL handoff (BOO-375) description synced.
 - **v2 (2026-06-14)** — Board sign-off Q1–Q4. New product pillar: pluggable LLM-agent opponent. Architecture in §5a. Risk register, MVP, roadmap, decomposition preview updated accordingly. Handed off to TL.

@@ -10,8 +10,8 @@
 #   fly secrets set COOKIE_SIGNING_SECRET=$(openssl rand -hex 32)   # 64 hex = 32 bytes (BOO-498 gate)
 #   # DEEPSEEK_API_KEY is NOT read at runtime yet (P1 ships scripted provider; wire in BOO-490/491).
 #
-# Deploy:
-#   fly deploy
+# Deploy (stamp current commit SHA into the image):
+#   fly deploy --build-arg GIT_SHA=$(git rev-parse --short HEAD)
 #
 # Smoke test:
 #   curl https://korovan.fly.dev/healthz
@@ -23,6 +23,9 @@ primary_region = "ams"
   # Dockerfile must be at repo root (delivered by BOO-461).
   # Build context: repo root.
   # Build stages: pnpm install → pnpm --filter server build → node server/dist/index.js
+  # Real SHA comes from --build-arg at deploy time; fly.toml cannot evaluate git commands.
+  [build.args]
+    GIT_SHA = "dev"
 
 [env]
   NODE_ENV = "production"

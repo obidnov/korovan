@@ -34,6 +34,8 @@ RUN pnpm --filter server build
 # Migrations are read at runtime by server/src/db.ts — not compiled into dist/
 COPY server/migrations/ server/migrations/
 
+ARG GIT_SHA=dev
+ENV GIT_SHA=$GIT_SHA
 ENV NODE_ENV=production
 
 EXPOSE 8080

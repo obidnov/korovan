@@ -413,16 +413,56 @@ describe('decide() — auth errors', () => {
 // ─── HTTPS enforcement ────────────────────────────────────────────────────────
 
 describe('HTTPS enforcement', () => {
-  it('throws at construction time on http:// base URL', () => {
+  it('throws LLMProviderError with code "auth" on non-loopback http:// base URL', () => {
+    let caught: unknown = null
+    try {
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://api.deepseek.com' })
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toBeInstanceOf(LLMProviderError)
+    expect((caught as LLMProviderError).code).toBe('auth')
+  })
+
+  it('accepts http://localhost loopback (Ollama-style local endpoint, NODE_ENV=test)', () => {
     expect(() =>
-      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://api.deepseek.com' }),
-    ).toThrow(/HTTPS/i)
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://localhost:11434' }),
+    ).not.toThrow()
+  })
+
+  it('accepts http://127.0.0.1 loopback', () => {
+    expect(() =>
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://127.0.0.1:8080' }),
+    ).not.toThrow()
+  })
+
+  it('accepts http://[::1] IPv6 loopback', () => {
+    expect(() =>
+      createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://[::1]:8080' }),
+    ).not.toThrow()
   })
 
   it('accepts https:// base URL', () => {
     expect(() =>
       createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'https://api.deepseek.com' }),
     ).not.toThrow()
+  })
+
+  it('rejects http://localhost when NODE_ENV is not "test" (production loopback gate)', () => {
+    const prev = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    try {
+      let caught: unknown = null
+      try {
+        createDeepSeekProvider({ apiKey: 'sk-test', baseUrl: 'http://localhost:11434' })
+      } catch (err) {
+        caught = err
+      }
+      expect(caught).toBeInstanceOf(LLMProviderError)
+      expect((caught as LLMProviderError).code).toBe('auth')
+    } finally {
+      process.env.NODE_ENV = prev
+    }
   })
 })
 

@@ -48,14 +48,23 @@ export function createDeepSeekProvider(config: DeepSeekServerConfig): LLMProvide
     timeoutMs = DEFAULT_TIMEOUT_MS,
   } = config
 
-  if (!baseUrl.toLowerCase().startsWith('https://')) {
-    throw new Error(
-      'DeepSeek adapter requires an HTTPS base URL to prevent API key exposure over plaintext',
-    )
+  // Parse via URL to canonicalise case, surface malformed input early (throws TypeError),
+  // and pull a stable hostname for the loopback comparison below.
+  const url = new URL(baseUrl)
+  const isLoopback =
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.hostname === '[::1]'
+  // Loopback carve-out is gated to NODE_ENV=test: in production the only legitimate
+  // baseUrl is https://api.deepseek.com; allowing http://localhost there would let
+  // a misconfiguration leak the API key in plaintext on the operator's network.
+  const loopbackAllowed = process.env.NODE_ENV === 'test'
+  if (url.protocol !== 'https:' && !(isLoopback && loopbackAllowed)) {
+    throw new LLMProviderError('auth', 'non-HTTPS baseUrl rejected')
   }
 
   if (!apiKey || apiKey.trim() === '') {
-    throw new Error('DeepSeek adapter requires a non-empty apiKey')
+    throw new LLMProviderError('auth', 'DeepSeek adapter requires a non-empty apiKey')
   }
 
   return {

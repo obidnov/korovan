@@ -21,6 +21,7 @@ export const ENDPOINT_PROFILES: Record<string, RateLimitProfile> = {
   'POST /api/saves': { identityPerMin: 30, ipPerMin: 300 },
   'POST /api/leaderboard': { identityPerMin: 6, ipPerMin: 60 },
   'POST /api/identity/bootstrap': { identityPerMin: 10, ipPerMin: 30 },
+  'PATCH /api/identity/me': { identityPerMin: 20, ipPerMin: 60 },
 }
 
 // --- Sliding-window counter (smooth approximation) ---

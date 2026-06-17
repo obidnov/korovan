@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { CaravanSaveState } from '../world/caravan.js';
+import { ZONE_IDS } from '../world/zones.js';
 
 // Placeholder until inventory issue defines the canonical shape
 export interface LootItem {
@@ -32,6 +33,8 @@ const saveV1Schema = z.object({
   world: z.object({
     // null accepted for saves predating the caravan feature (BOO-387)
     caravanState: z.union([caravanSaveStateSchema, z.null()]),
+    // Optional for backward compat with pre-BOO-551 saves; defaults to 'elf-forest' on load
+    currentZone: z.enum(ZONE_IDS).optional(),
   }),
   // settings.provider was client-side in pre-BOO-485 saves; now server-side per P0-3/P0-4.
   // Field kept optional so old saves continue to parse without error.

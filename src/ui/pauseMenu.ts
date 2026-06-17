@@ -11,6 +11,7 @@ export interface PauseMenuCallbacks {
   onSave: () => void
   onSettings: () => void
   onMainMenu: () => void
+  onOpenMap: () => void
 }
 
 export interface PauseMenu {
@@ -53,6 +54,12 @@ export function createPauseMenu(callbacks: PauseMenuCallbacks): PauseMenu {
   })
   saveBtn.id = 'pm-save'
 
+  const travelBtn = makeBtn('Travel (Map)', '', () => {
+    close()
+    callbacks.onOpenMap()
+  })
+  travelBtn.id = 'pm-travel'
+
   const providerBtn = makeBtn('Settings', '', () => {
     callbacks.onSettings()
     // Keep pause menu open so user can return to it after settings
@@ -67,6 +74,7 @@ export function createPauseMenu(callbacks: PauseMenuCallbacks): PauseMenu {
 
   nav.appendChild(resumeBtn)
   nav.appendChild(saveBtn)
+  nav.appendChild(travelBtn)
   nav.appendChild(providerBtn)
   nav.appendChild(mainMenuBtn)
 
@@ -76,7 +84,7 @@ export function createPauseMenu(callbacks: PauseMenuCallbacks): PauseMenu {
   document.body.appendChild(overlay)
 
   // ── Focus trap ─────────────────────────────────────────────────────────────
-  const focusable = [resumeBtn, saveBtn, providerBtn, mainMenuBtn]
+  const focusable = [resumeBtn, saveBtn, travelBtn, providerBtn, mainMenuBtn]
 
   overlay.addEventListener('keydown', (e) => {
     if (!_isOpen) return

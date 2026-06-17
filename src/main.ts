@@ -407,7 +407,8 @@ async function startGame(savedState: SaveV1 | null): Promise<void> {
     hint.style.display = locked ? 'none' : 'block'
 
     // Pointer lock released (Esc during play) → open pause menu
-    if (!locked && !pauseMenu.isOpen) {
+    // Guard: don't pause when quest panel released the lock intentionally
+    if (!locked && !pauseMenu.isOpen && !questPanel.isOpen) {
       paused = true
       sceneAudio?.pause()
       pauseMenu.open()

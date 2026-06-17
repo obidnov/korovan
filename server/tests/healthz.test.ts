@@ -49,6 +49,50 @@ describe('GET /healthz', () => {
     }
   })
 
+  it('includes llm_proxy_enabled:true when LLM_PROXY_ENABLED is unset', async () => {
+    const original = process.env.LLM_PROXY_ENABLED
+    delete process.env.LLM_PROXY_ENABLED
+    try {
+      const res = await supertest(handle.server).get('/healthz')
+      expect(res.status).toBe(200)
+      expect(res.body.llm_proxy_enabled).toBe(true)
+    } finally {
+      if (original !== undefined) process.env.LLM_PROXY_ENABLED = original
+    }
+  })
+
+  it('includes llm_proxy_enabled:false when LLM_PROXY_ENABLED=false (kill-switch active)', async () => {
+    const original = process.env.LLM_PROXY_ENABLED
+    process.env.LLM_PROXY_ENABLED = 'false'
+    try {
+      const res = await supertest(handle.server).get('/healthz')
+      expect(res.status).toBe(200)
+      expect(res.body.llm_proxy_enabled).toBe(false)
+    } finally {
+      if (original === undefined) {
+        delete process.env.LLM_PROXY_ENABLED
+      } else {
+        process.env.LLM_PROXY_ENABLED = original
+      }
+    }
+  })
+
+  it('includes llm_proxy_enabled:true when LLM_PROXY_ENABLED=true (explicit enable)', async () => {
+    const original = process.env.LLM_PROXY_ENABLED
+    process.env.LLM_PROXY_ENABLED = 'true'
+    try {
+      const res = await supertest(handle.server).get('/healthz')
+      expect(res.status).toBe(200)
+      expect(res.body.llm_proxy_enabled).toBe(true)
+    } finally {
+      if (original === undefined) {
+        delete process.env.LLM_PROXY_ENABLED
+      } else {
+        process.env.LLM_PROXY_ENABLED = original
+      }
+    }
+  })
+
   it('returns 503 when DATABASE_URL points to an inaccessible path', async () => {
     const original = process.env.DATABASE_URL
     // /dev/null/nonexistent guarantees ENOTDIR / ENOENT on all POSIX systems

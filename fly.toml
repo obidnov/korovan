@@ -7,8 +7,8 @@
 #   fly launch --name korovan --region ams --no-deploy
 #   fly volumes create korovan_data --region ams --size 1
 #   fly secrets set DB_PATH=/data/korovan.db
-#   fly secrets set DEEPSEEK_API_KEY=<your_key>
-#   fly secrets set SESSION_SECRET=$(openssl rand -hex 32)
+#   fly secrets set COOKIE_SIGNING_SECRET=$(openssl rand -hex 32)   # 64 hex = 32 bytes (BOO-498 gate)
+#   # DEEPSEEK_API_KEY is NOT read at runtime yet (P1 ships scripted provider; wire in BOO-490/491).
 #
 # Deploy:
 #   fly deploy
@@ -26,8 +26,10 @@ primary_region = "ams"
 
 [env]
   NODE_ENV = "production"
-  # PORT is auto-injected by Fly.io to match internal_port (8080).
-  # DB_PATH, DEEPSEEK_API_KEY, SESSION_SECRET → set via `fly secrets set` (never in fly.toml).
+  # Fly does NOT auto-inject PORT — the server reads process.env.PORT (default 8787),
+  # so it must be set here to match http_service.internal_port below.
+  PORT = "8080"
+  # DB_PATH, COOKIE_SIGNING_SECRET → set via `fly secrets set` (never in fly.toml).
 
 [http_service]
   internal_port = 8080

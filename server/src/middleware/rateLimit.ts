@@ -1,4 +1,5 @@
 import type { Request, RequestHandler, Response } from 'express'
+import { logger } from '../logger'
 
 // Augment Express Request to pick up playerId set by identity middleware (P0-6).
 declare global {
@@ -15,9 +16,30 @@ export interface RateLimitProfile {
   ipPerMin: number
 }
 
+// BOO-567: env-var cap resolver for `POST /api/llm/decide`. Parses a positive integer,
+// falls back to the supplied default on absence / NaN / non-positive. Lets an operator
+// ship a cap raise (e.g. 30 → 40-50 RPM if benign-429 rate exceeds the §11 threshold)
+// without a code change.
+export function resolveEnvCap(envVarName: string, defaultValue: number): number {
+  const raw = process.env[envVarName]
+  if (raw === undefined || raw === '') return defaultValue
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultValue
+  return Math.floor(parsed)
+}
+
+// LLM_DECIDE_IP_RPM / LLM_DECIDE_IDENTITY_RPM defaults match the P1 BC-4 numbers.
+// BOO-566 will land the P2 DeepSeek cap profile (12/30); the env-var override path is
+// independent of which numbers are baked in, so an IP-cap raise during Wave B rollout
+// can ship as a deploy-time env flip.
+const LLM_DECIDE_PROFILE: RateLimitProfile = {
+  identityPerMin: resolveEnvCap('LLM_DECIDE_IDENTITY_RPM', 60),
+  ipPerMin: resolveEnvCap('LLM_DECIDE_IP_RPM', 600),
+}
+
 // Default profiles per endpoint (BD-picked P1 numbers per BC-4 brief).
 export const ENDPOINT_PROFILES: Record<string, RateLimitProfile> = {
-  'POST /api/llm/decide': { identityPerMin: 60, ipPerMin: 600 },
+  'POST /api/llm/decide': LLM_DECIDE_PROFILE,
   'POST /api/saves': { identityPerMin: 30, ipPerMin: 300 },
   'POST /api/leaderboard': { identityPerMin: 6, ipPerMin: 60 },
   'POST /api/identity/bootstrap': { identityPerMin: 10, ipPerMin: 30 },
@@ -150,6 +172,20 @@ export function createRateLimiter(profile: RateLimitProfile): RequestHandler {
     const ip = req.ip ?? 'unknown'
     const ipKey = `ip:${ip}:${path}`
     if (!checkAndIncrement(ipKey, profile.ipPerMin, now)) {
+      // BOO-567: structured 429 telemetry. `trigger` is the decisive signal for the
+      // benign-429 decision rule (see PLAN.md §11): per-IP 429s NOT preceded by a
+      // per-identity 429 on the same cookie within the window indicate shared-NAT
+      // households getting starved, not abuse — once their hourly rate exceeds 2 %
+      // of total /api/llm/decide calls, raise LLM_DECIDE_IP_RPM (30 → 40-50).
+      logger.warn({
+        event: 'rate_limit.429',
+        trigger: 'ip',
+        method: req.method,
+        path,
+        ip,
+        playerId: req.playerId,
+        limit: profile.ipPerMin,
+      })
       res.set('Retry-After', String(retryAfterSeconds(now)))
       res.status(429).json({ error: 'Too Many Requests', retryAfter: retryAfterSeconds(now) })
       return
@@ -160,6 +196,15 @@ export function createRateLimiter(profile: RateLimitProfile): RequestHandler {
     if (playerId) {
       const identityKey = `identity:${playerId}:${path}`
       if (!checkAndIncrement(identityKey, profile.identityPerMin, now)) {
+        logger.warn({
+          event: 'rate_limit.429',
+          trigger: 'identity',
+          method: req.method,
+          path,
+          ip,
+          playerId,
+          limit: profile.identityPerMin,
+        })
         res.set('Retry-After', String(retryAfterSeconds(now)))
         res.status(429).json({ error: 'Too Many Requests', retryAfter: retryAfterSeconds(now) })
         return
